@@ -291,7 +291,7 @@ void __cdecl Renderer::WindowEventLoop(void*)
 
     glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 #ifndef FORCE_FULLSCREEN
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 
@@ -353,6 +353,7 @@ void Renderer::Terminate() {
         glfwMakeContextCurrent(NULL);
         EndEventLoop();
 #endif
+        isTerminated = true;
     }
 }
 
