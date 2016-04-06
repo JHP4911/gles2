@@ -442,6 +442,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             "   gl_Position = position;                 \n"
             "}                                          \n";
         char fragmentShaderCode[] =
+#ifndef _WIN32
+            "precision mediump float;                   \n"
+#endif
             "void main()                                \n"
             "{                                          \n"
             "   gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
