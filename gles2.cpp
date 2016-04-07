@@ -284,7 +284,7 @@ void __cdecl Renderer::WindowEventLoop(void*)
         return NULL;
     }
 #else
-	if (!glfwInit()) {
+	if (glfwInit() != GL_TRUE) {
 	    eventLoopInitError = true;
         _endthread();
 	}
