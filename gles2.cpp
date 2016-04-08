@@ -381,22 +381,80 @@ void Renderer::SetOnCloseCallback(OnCloseCallback callback)
     onCloseCallback = callback;
 }
 
-GLuint LoadShader(const char* shaderCode, GLenum type)
+class ShaderProgram
+{
+    public:
+        ShaderProgram(const char* vertexShaderCode, const char* fragmentShaderCode);
+        ~ShaderProgram();
+
+        GLuint getProgram();
+    private:
+        GLuint vertexShader;
+        GLuint fragmentShader;
+        GLuint program;
+
+        GLuint LoadShader(const char* shaderCode, GLenum shaderType);
+};
+
+ShaderProgram::ShaderProgram(const char* vertexShaderCode, const char* fragmentShaderCode)
+{
+    GLint isLinked;
+
+    vertexShader = LoadShader(vertexShaderCode, GL_VERTEX_SHADER);
+    if (vertexShader == 0) {
+        throw Exception("Cannot load vertex shader");
+    }
+    fragmentShader = LoadShader(fragmentShaderCode, GL_FRAGMENT_SHADER);
+    if (fragmentShader == 0) {
+        glDeleteShader(vertexShader);
+        throw Exception("Cannot load fragment shader");
+    }
+    program = glCreateProgram();
+    if (program == 0) {
+        glDeleteShader(fragmentShader);
+        glDeleteShader(vertexShader);
+        throw Exception("Cannot create shader program");
+    }
+    glAttachShader(program, vertexShader);
+    glAttachShader(program, fragmentShader);
+    glLinkProgram(program);
+    glGetProgramiv(program, GL_LINK_STATUS, &isLinked);
+    if (!isLinked) {
+        glDeleteProgram(program);
+        glDeleteShader(fragmentShader);
+        glDeleteShader(vertexShader);
+        throw Exception("Error while linking shader");
+    }
+}
+
+ShaderProgram::~ShaderProgram()
+{
+    glDeleteProgram(program);
+    glDeleteShader(fragmentShader);
+    glDeleteShader(vertexShader);
+}
+
+GLuint ShaderProgram::getProgram()
+{
+    return program;
+}
+
+GLuint ShaderProgram::LoadShader(const char* shaderCode, GLenum shaderType)
 {
     GLuint shader;
-    GLint compiled;
+    GLint isCompiled;
 
-    shader = glCreateShader(type);
+    shader = glCreateShader(shaderType);
     if (shader == 0)
         return 0;
     glShaderSource(shader, 1, &shaderCode, NULL);
     glCompileShader(shader);
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
-    if (!compiled) {
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &isCompiled);
+    if (!isCompiled) {
         GLint infoLen = 0;
         glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
         if (infoLen > 1) {
-            char* infoLog = (char*)malloc(sizeof(char) * infoLen);
+            char* infoLog = new char[infoLen];
             glGetShaderInfoLog(shader, infoLen, NULL, infoLog);
 #ifndef _WIN32
             cout << "Shader compilation error:" << endl << infoLog << endl;
@@ -405,7 +463,7 @@ GLuint LoadShader(const char* shaderCode, GLenum type)
             MessageBox(NULL, infoLog, "Shader compilation error", MB_ICONEXCLAMATION);
 #endif
 #endif
-            free(infoLog);
+            delete [] infoLog;
         }
         glDeleteShader(shader);
         return 0;
@@ -429,11 +487,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     Renderer* renderer = NULL;
 
     try {
-        uint32_t width, height;
-
         renderer = Renderer::Initialize();
         renderer->SetOnCloseCallback(CloseRequestHandler);
-        renderer->GetScreenSize(width, height);
 
         char vertexShaderCode[] =
             "attribute vec4 position;                   \n"
@@ -441,6 +496,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             "{                                          \n"
             "   gl_Position = position;                 \n"
             "}                                          \n";
+
         char fragmentShaderCode[] =
 #ifndef _WIN32
             "precision mediump float;                   \n"
@@ -450,37 +506,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             "   gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
             "}                                          \n";
 
-        GLuint vertexShader;
-        GLuint fragmentShader;
-        GLuint programObject;
-        GLint linked;
+        ShaderProgram program(vertexShaderCode, fragmentShaderCode);
 
-        vertexShader = LoadShader(vertexShaderCode, GL_VERTEX_SHADER);
-        if (vertexShader == 0) {
-            throw Exception("Cannot load shaders");
-        }
-        fragmentShader = LoadShader(fragmentShaderCode, GL_FRAGMENT_SHADER);
-        if (fragmentShader == 0) {
-            glDeleteShader(vertexShader);
-            throw Exception("Cannot load shaders");
-        }
-        programObject = glCreateProgram();
-        if (programObject == 0) {
-            glDeleteShader(fragmentShader);
-            glDeleteShader(vertexShader);
-            throw Exception("Cannot create shader program");
-        }
-        glAttachShader(programObject, vertexShader);
-        glAttachShader(programObject, fragmentShader);
-        glBindAttribLocation(programObject, 0, "position");
-        glLinkProgram(programObject);
-        glGetProgramiv(programObject, GL_LINK_STATUS, &linked);
-        if (!linked) {
-            glDeleteProgram(programObject);
-            glDeleteShader(fragmentShader);
-            glDeleteShader(vertexShader);
-            throw Exception("Error while linking shader");
-        }
+        GLuint positionAttribute = glGetAttribLocation(program.getProgram(), "position");
 
         GLfloat g_vertex_buffer_data[] = {
            -0.67f, -0.67f, 0.0f,
@@ -488,26 +516,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
            0.0f,  0.87f, 0.0f,
         };
 
+        uint32_t width, height;
+
+        renderer->GetScreenSize(width, height);
         glViewport(0, 0, width, height);
 
         while (!quit) {
             glClearColor(0.15f, 0.25f, 0.35f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
 
-            glUseProgram(programObject);
+            glUseProgram(program.getProgram());
 
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, g_vertex_buffer_data);
-            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, g_vertex_buffer_data);
+            glEnableVertexAttribArray(positionAttribute);
             glDrawArrays(GL_TRIANGLES, 0, 3);
-            glDisableVertexAttribArray(0);
+            glDisableVertexAttribArray(positionAttribute);
 
             renderer->SwapBuffers();
             usleep(1);
         }
-
-        glDeleteProgram(programObject);
-        glDeleteShader(fragmentShader);
-        glDeleteShader(vertexShader);
 
         renderer->Terminate();
     } catch (exception &e) {
