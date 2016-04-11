@@ -13,6 +13,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #endif
+#include <cmath>
 
 #ifndef _WIN32
 using std::cin;
@@ -387,7 +388,7 @@ class ShaderProgram
         ShaderProgram(const char* vertexShaderCode, const char* fragmentShaderCode);
         ~ShaderProgram();
 
-        GLuint getProgram();
+        GLuint GetProgram();
     private:
         GLuint vertexShader;
         GLuint fragmentShader;
@@ -434,7 +435,7 @@ ShaderProgram::~ShaderProgram()
     glDeleteShader(vertexShader);
 }
 
-GLuint ShaderProgram::getProgram()
+GLuint ShaderProgram::GetProgram()
 {
     return program;
 }
@@ -492,9 +493,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         char vertexShaderCode[] =
             "attribute vec4 position;                   \n"
+            "uniform mat4 matrix;                       \n"
             "void main()                                \n"
             "{                                          \n"
-            "   gl_Position = position;                 \n"
+            "   gl_Position = matrix * position;        \n"
             "}                                          \n";
 
         char fragmentShaderCode[] =
@@ -508,12 +510,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         ShaderProgram program(vertexShaderCode, fragmentShaderCode);
 
-        GLuint positionAttribute = glGetAttribLocation(program.getProgram(), "position");
+        GLuint positionAttribute = glGetAttribLocation(program.GetProgram(), "position");
+        GLuint matrixUniform = glGetUniformLocation(program.GetProgram(), "matrix");
 
-        GLfloat g_vertex_buffer_data[] = {
+        GLfloat angle = 0.0f;
+
+        GLfloat vertexData[] = {
            -0.67f, -0.67f, 0.0f,
            0.67f, -0.67f, 0.0f,
-           0.0f,  0.87f, 0.0f,
+           0.0f,  0.67f, 0.0f,
         };
 
         uint32_t width, height;
@@ -522,17 +527,27 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         glViewport(0, 0, width, height);
 
         while (!quit) {
+            GLfloat rotationMatrix[] = {
+                cos(angle * M_PI / 180.0f), -sin(angle * M_PI / 180.0f), 0.0f, 0.0f,
+                sin(angle * M_PI / 180.0f), cos(angle * M_PI / 180.0f), 0.0f, 0.0f,
+                0.0f, 0.0f, 1.0f, 0.0f,
+                0.0f, 0.0f, 0.0f, 1.0f
+            };
+
             glClearColor(0.15f, 0.25f, 0.35f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
 
-            glUseProgram(program.getProgram());
+            glUseProgram(program.GetProgram());
+            glUniformMatrix4fv(matrixUniform, 1, GL_FALSE, &rotationMatrix[0]);
 
-            glVertexAttribPointer(positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, g_vertex_buffer_data);
+            glVertexAttribPointer(positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, vertexData);
             glEnableVertexAttribArray(positionAttribute);
             glDrawArrays(GL_TRIANGLES, 0, 3);
             glDisableVertexAttribArray(positionAttribute);
 
             renderer->SwapBuffers();
+
+            angle += 0.1f;
             usleep(1);
         }
 
