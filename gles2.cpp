@@ -492,44 +492,56 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         renderer->SetOnCloseCallback(CloseRequestHandler);
 
         char vertexShaderCode[] =
-            "attribute vec4 position;                   \n"
-            "uniform mat4 matrix;                       \n"
-            "void main()                                \n"
-            "{                                          \n"
-            "   gl_Position = matrix * position;        \n"
-            "}                                          \n";
+            "attribute vec3 vertexPosition;                             \n"
+            "attribute vec3 vertexColor;                                \n"
+            "varying vec3 fragmentColor;                                \n"
+            "uniform mat4 rotationMatrix;                               \n"
+            "                                                           \n"
+            "void main()                                                \n"
+            "{                                                          \n"
+            "   gl_Position = rotationMatrix * vec4(vertexPosition, 1); \n"
+            "   fragmentColor = vertexColor;                            \n"
+            "}                                                          \n";
 
         char fragmentShaderCode[] =
 #ifndef _WIN32
-            "precision mediump float;                   \n"
+            "precision mediump float;                                   \n"
 #endif
-            "void main()                                \n"
-            "{                                          \n"
-            "   gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
-            "}                                          \n";
+            "varying vec3 fragmentColor;                                \n"
+            "                                                           \n"
+            "void main()                                                \n"
+            "{                                                          \n"
+            "   gl_FragColor = vec4(fragmentColor, 1);                  \n"
+            "}                                                          \n";
 
         ShaderProgram program(vertexShaderCode, fragmentShaderCode);
 
-        GLuint positionAttribute = glGetAttribLocation(program.GetProgram(), "position");
-        GLuint matrixUniform = glGetUniformLocation(program.GetProgram(), "matrix");
+        GLuint vertPositionAttribute = glGetAttribLocation(program.GetProgram(), "vertexPosition");
+        GLuint vertColorAttribute = glGetAttribLocation(program.GetProgram(), "vertexColor");
+        GLuint rotMatrixUniform = glGetUniformLocation(program.GetProgram(), "rotationMatrix");
 
         GLfloat angle = 0.0f;
 
         GLfloat vertexData[] = {
-           -0.67f, -0.67f, 0.0f,
-           0.67f, -0.67f, 0.0f,
-           0.0f,  0.67f, 0.0f,
+           -0.65f, -0.375f, 0.0f,
+           0.65f, -0.375f, 0.0f,
+           0.0f, 0.75f, 0.0f
+        };
+
+        GLfloat colorData[] = {
+           1.0f, 0.0f, 0.0f,
+           0.0f, 1.0f, 0.0f,
+           0.0f, 0.0f, 1.0f
         };
 
         uint32_t width, height;
-
         renderer->GetScreenSize(width, height);
         glViewport(0, 0, width, height);
 
         while (!quit) {
             GLfloat rotationMatrix[] = {
-                cos(angle * M_PI / 180.0f), -sin(angle * M_PI / 180.0f), 0.0f, 0.0f,
-                sin(angle * M_PI / 180.0f), cos(angle * M_PI / 180.0f), 0.0f, 0.0f,
+                (GLfloat)cos(angle * M_PI / 180.0f), -(GLfloat)sin(angle * M_PI / 180.0f), 0.0f, 0.0f,
+                (GLfloat)sin(angle * M_PI / 180.0f), (GLfloat)cos(angle * M_PI / 180.0f), 0.0f, 0.0f,
                 0.0f, 0.0f, 1.0f, 0.0f,
                 0.0f, 0.0f, 0.0f, 1.0f
             };
@@ -538,12 +550,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             glClear(GL_COLOR_BUFFER_BIT);
 
             glUseProgram(program.GetProgram());
-            glUniformMatrix4fv(matrixUniform, 1, GL_FALSE, &rotationMatrix[0]);
+            glUniformMatrix4fv(rotMatrixUniform, 1, GL_FALSE, &rotationMatrix[0]);
 
-            glVertexAttribPointer(positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, vertexData);
-            glEnableVertexAttribArray(positionAttribute);
+            glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, colorData);
+            glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, vertexData);
+
+            glEnableVertexAttribArray(vertColorAttribute);
+            glEnableVertexAttribArray(vertPositionAttribute);
+
             glDrawArrays(GL_TRIANGLES, 0, 3);
-            glDisableVertexAttribArray(positionAttribute);
+
+            glDisableVertexAttribArray(vertPositionAttribute);
+            glDisableVertexAttribArray(vertColorAttribute);
 
             renderer->SwapBuffers();
 
