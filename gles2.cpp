@@ -540,8 +540,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         while (!quit) {
             GLfloat rotationMatrix[] = {
-                (GLfloat)cos(angle * M_PI / 180.0f), -(GLfloat)sin(angle * M_PI / 180.0f), 0.0f, 0.0f,
-                (GLfloat)sin(angle * M_PI / 180.0f), (GLfloat)cos(angle * M_PI / 180.0f), 0.0f, 0.0f,
+                (GLfloat)cos(angle * M_PI / 180.0f), (GLfloat)sin(angle * M_PI / 180.0f), 0.0f, 0.0f,
+                -(GLfloat)sin(angle * M_PI / 180.0f), (GLfloat)cos(angle * M_PI / 180.0f), 0.0f, 0.0f,
                 0.0f, 0.0f, 1.0f, 0.0f,
                 0.0f, 0.0f, 0.0f, 1.0f
             };
@@ -565,7 +565,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
             renderer->SwapBuffers();
 
-            angle += 0.1f;
+            angle += 1.0f;
             usleep(1);
         }
 
