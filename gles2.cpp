@@ -23,6 +23,11 @@ using std::endl;
 #endif
 using std::string;
 using std::exception;
+using std::min;
+
+#define ROTATION_AXIS_X 0
+#define ROTATION_AXIS_Y 1
+#define ROTATION_AXIS_Z 2
 
 class Exception : public exception
 {
@@ -473,6 +478,235 @@ GLuint ShaderProgram::LoadShader(const char* shaderCode, GLenum shaderType)
     return shader;
 }
 
+class Matrix
+{
+    public:
+        Matrix();
+        Matrix(GLuint width, GLuint height);
+        Matrix(GLuint width, GLuint height, GLfloat* matrixData);
+        ~Matrix();
+
+        GLfloat* GetData();
+
+        void GetSize(GLuint &width, GLuint &height);
+        void SetSize(GLuint width, GLuint height);
+
+        Matrix operator +(const Matrix &matrix);
+        Matrix operator -(const Matrix &matrix);
+        Matrix operator *(const Matrix &matrix);
+        Matrix & operator =(const Matrix &matrix);
+        Matrix & operator =(const GLfloat* matrixData);
+
+        static Matrix & GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane);
+        static Matrix & GenerateTranslation(GLfloat x, GLfloat y, GLfloat z);
+        static Matrix & GenerateRotation(GLfloat angle, GLuint axis);
+    private:
+        GLfloat* data;
+        GLuint width;
+        GLuint height;
+
+        bool RecreateData(GLuint width, GLuint height, bool deleteData);
+};
+
+Matrix::Matrix() :
+    width(4), height(4)
+{
+    data = new GLfloat[4 * 4];
+    memset(data, 0, sizeof(GLfloat) * 4 * 4);
+}
+
+Matrix::Matrix(GLuint width, GLuint height) :
+    width(width), height(height)
+{
+    if ((width < 1) || (height < 1)) {
+        throw Exception("Cannot create matrix - dimensions must be greater than 0");
+    }
+    data = new GLfloat[width * height];
+    memset(data, 0, sizeof(GLfloat) * width * height);
+}
+
+Matrix::Matrix(GLuint width, GLuint height, GLfloat *matrixData) :
+    width(width), height(height)
+{
+    if ((width < 1) || (height < 1)) {
+        throw Exception("Cannot create matrix - dimensions must be greater than 0");
+    }
+    data = new GLfloat[width * height];
+    memcpy(data, matrixData, sizeof(GLfloat) * width * height);
+}
+
+Matrix::~Matrix()
+{
+    delete [] data;
+}
+
+bool Matrix::RecreateData(GLuint width, GLuint height, bool deleteData)
+{
+    if ((this->width != width) || (this->height != height)) {
+        if (deleteData) {
+            delete [] data;
+        }
+        this->width = width;
+        this->height = height;
+        data = new GLfloat[this->width * this->height];
+        return true;
+    }
+    return false;
+}
+
+Matrix & Matrix::GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane)
+{
+    Matrix* result = new Matrix(4, 4);
+    GLfloat* data = result->GetData();
+
+    data[0] = 2.0f * nearPane / width;
+    data[5] = 2.0f * nearPane / height;
+    data[10] = -(farPane + nearPane) / (farPane - nearPane);
+    data[11] = -1.0f;
+    data[14] = -2.0f * farPane * nearPane / (farPane - nearPane);
+
+    return *result;
+}
+
+Matrix & Matrix::GenerateTranslation(GLfloat x, GLfloat y, GLfloat z)
+{
+    Matrix* result = new Matrix(4, 4);
+    GLfloat* data = result->GetData();
+
+    for (GLuint i = 0; i < 4; i++) {
+        data[i + i * 4] = 1.0f;
+    }
+    data[12] = x;
+    data[13] = y;
+    data[14] = z;
+
+    return *result;
+}
+
+Matrix & Matrix::GenerateRotation(GLfloat angle, GLuint axis)
+{
+    Matrix* result = new Matrix(4, 4);
+    GLfloat* data = result->GetData();
+
+    data[15] = 1.0f;
+    GLfloat sinAngle = (GLfloat)sin(angle * M_PI / 180.0f);
+    GLfloat cosAngle = (GLfloat)cos(angle * M_PI / 180.0f);
+
+    if (axis == ROTATION_AXIS_X) {
+        data[0] = 1.0f;
+        data[5] = cosAngle;
+        data[6] = sinAngle;
+        data[9] = -sinAngle;
+        data[10] = cosAngle;
+    }
+    if (axis == ROTATION_AXIS_Y) {
+        data[0] = cosAngle;
+        data[2] = sinAngle;
+        data[5] = 1.0f;
+        data[8] = -sinAngle;
+        data[10] = cosAngle;
+    }
+    if (axis == ROTATION_AXIS_Z) {
+        data[0] = cosAngle;
+        data[1] = sinAngle;
+        data[4] = -sinAngle;
+        data[5] = cosAngle;
+        data[10] = 1.0f;
+    }
+
+    return *result;
+}
+
+GLfloat* Matrix::GetData()
+{
+    return data;
+}
+
+Matrix Matrix::operator +(const Matrix &matrix)
+{
+    if ((width != matrix.width) || (height != matrix.height)) {
+        throw Exception("Cannot add matrices - incompatible matrix dimensions");
+    }
+    Matrix result(width, height);
+    for (GLuint i = 0; i < width * height; i++) {
+        result.data[i] = data[i] + matrix.data[i];
+    }
+    return result;
+}
+
+Matrix Matrix::operator -(const Matrix &matrix)
+{
+    if ((width != matrix.width) || (height != matrix.height)) {
+        throw Exception("Cannot subtract matrices - incompatible matrix dimensions");
+    }
+    Matrix result(width, height);
+    for (GLuint i = 0; i < width * height; i++) {
+        result.data[i] = data[i] - matrix.data[i];
+    }
+    return result;
+}
+
+Matrix Matrix::operator *(const Matrix &matrix)
+{
+    if (width != matrix.height) {
+        throw Exception("Cannot multiply matrices - incompatible matrix dimensions");
+    }
+    Matrix result(matrix.width, height);
+    for (GLuint j = 0; j < result.height; j++) {
+        for (GLuint i = 0; i < result.width; i++) {
+            GLfloat m = 0.0f;
+            for (GLuint k = 0; k < width; k++) {
+                m += data[j + k * height] * matrix.data[k + i * matrix.height];
+            }
+            result.data[j + i * result.height] = m;
+        }
+    }
+    return result;
+}
+
+Matrix & Matrix::operator =(const Matrix &matrix)
+{
+    if ((width != matrix.width) || (height != matrix.height)) {
+        delete [] data;
+        width = matrix.width;
+        height = matrix.height;
+        data = new GLfloat[this->width * this->height];
+    }
+    memcpy(data, matrix.data, sizeof(GLfloat) * width * height);
+    return *this;
+}
+
+Matrix & Matrix::operator =(const GLfloat *matrixData)
+{
+    memcpy(data, matrixData, sizeof(GLfloat) * width * height);
+    return *this;
+}
+
+void Matrix::GetSize(GLuint &width, GLuint &height)
+{
+    width = this->width;
+    height = this->height;
+}
+
+void Matrix::SetSize(GLuint width, GLuint height)
+{
+    if ((width < 1) || (height < 1)) {
+        throw Exception("Cannot resize matrix - dimensions must be greater than 0");
+    }
+    if ((this->width == width) && (this->height == height)) {
+        return;
+    }
+    GLfloat* oldData = data;
+    data = new GLfloat[width * height];
+    memset(data, 0, sizeof(GLfloat) * width * height);
+    for (GLuint i = 0; i < min(this->width, width); i++) {
+        memcpy(&data[i * height], &oldData[i * this->height], sizeof(GLfloat) * min(this->height, height));
+    }
+    this->width = width;
+    this->height = height;
+    delete [] oldData;
+}
+
 bool quit;
 
 void CloseRequestHandler() {
@@ -540,18 +774,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         glViewport(0, 0, width, height);
 
         while (!quit) {
-            GLfloat rotationMatrix[] = {
-                (GLfloat)cos(angle * M_PI / 180.0f), (GLfloat)sin(angle * M_PI / 180.0f), 0.0f, 0.0f,
-                -(GLfloat)sin(angle * M_PI / 180.0f), (GLfloat)cos(angle * M_PI / 180.0f), 0.0f, 0.0f,
-                0.0f, 0.0f, 1.0f, 0.0f,
-                0.0f, 0.0f, 0.0f, 1.0f
-            };
+            Matrix rotation = Matrix::GenerateRotation(angle, ROTATION_AXIS_Z);
 
             glClearColor(0.15f, 0.25f, 0.35f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
 
             glUseProgram(program.GetProgram());
-            glUniformMatrix4fv(rotMatrixUniform, 1, GL_FALSE, &rotationMatrix[0]);
+            glUniformMatrix4fv(rotMatrixUniform, 1, GL_FALSE, rotation.GetData());
 
             glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, colorData);
             glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, vertexData);
