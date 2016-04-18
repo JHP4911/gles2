@@ -1,13 +1,15 @@
 # depslib dependency file v1.0
-1459187503 source:c:\users\marcin\documents\gles2\gles2.cpp
-	<iostream>
+1461008009 source:c:\users\marcin\documents\gles2\gles2.cpp
 	<exception>
+	<cmath>
 	<unistd.h>
+	<iostream>
 	<SDL.h>
 	<EGL/egl.h>
 	<EGL/eglext.h>
 	<GLES2/gl2.h>
 	<bcm_host.h>
+	<string>
 	<process.h>
 	<windows.h>
 	<GL/glew.h>
@@ -22,7 +24,7 @@
 	<OpenGL/glu.h>
 	<GL/glu.h>
 
-1439207241 c:\users\marcin\documents\gles2\glew\include\gl\glew.h
+1459418358 c:\users\marcin\documents\gles2\glew\include\gl\glew.h
 	<stddef.h>
 	<inttypes.h>
 	<stdint.h>
@@ -31,7 +33,7 @@
 	<OpenGL/glu.h>
 	<GL/glu.h>
 
-1444677477 c:\users\marcin\documents\gles2\glfw\include\glfw\glfw3.h
+1459418358 c:\users\marcin\documents\gles2\glfw\include\glfw\glfw3.h
 	<stddef.h>
 	<OpenGL/gl3.h>
 	<OpenGL/gl3ext.h>
