@@ -504,8 +504,6 @@ class Matrix
         GLfloat* data;
         GLuint width;
         GLuint height;
-
-        bool RecreateData(GLuint width, GLuint height, bool deleteData);
 };
 
 Matrix::Matrix() :
@@ -538,20 +536,6 @@ Matrix::Matrix(GLuint width, GLuint height, GLfloat *matrixData) :
 Matrix::~Matrix()
 {
     delete [] data;
-}
-
-bool Matrix::RecreateData(GLuint width, GLuint height, bool deleteData)
-{
-    if ((this->width != width) || (this->height != height)) {
-        if (deleteData) {
-            delete [] data;
-        }
-        this->width = width;
-        this->height = height;
-        data = new GLfloat[this->width * this->height];
-        return true;
-    }
-    return false;
 }
 
 Matrix & Matrix::GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane)
