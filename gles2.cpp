@@ -1,19 +1,20 @@
-#include <iostream>
 #include <exception>
+#include <cmath>
 #include <unistd.h>
 #ifndef _WIN32
+#include <iostream>
 #include <SDL.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 #include <bcm_host.h>
 #else
+#include <string>
 #include <process.h>
 #include <windows.h>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #endif
-#include <cmath>
 
 #ifndef _WIN32
 using std::cin;
