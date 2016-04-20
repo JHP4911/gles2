@@ -421,7 +421,6 @@ LRESULT CALLBACK Renderer::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
         if (onCloseCallback != NULL) {
             onCloseCallback();
         }
-        PostQuitMessage(0);
         return 0;
     } else if ((msg == WM_SETCURSOR) && (LOWORD(lParam) == HTCLIENT)) {
         SetCursor(NULL);
@@ -508,22 +507,26 @@ void __cdecl Renderer::WindowEventLoop(void*)
     ShowWindow(hWnd, SW_SHOW);
 #endif
 
-    while (eventLoop) {
 #ifndef _WIN32
+    while (eventLoop) {
         if (SDL_PollEvent(&event) && (event.type == SDL_KEYDOWN) && (event.key.keysym.sym == SDLK_ESCAPE)) {
             if (onCloseCallback != NULL) {
                 onCloseCallback();
             }
         }
 #else
+    while (true) {
         if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
                 windowExitCode = msg.wParam;
-                eventLoop = false;
+                break;
             } else {
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
+        }
+        if (!eventLoop) {
+            PostQuitMessage(0);
         }
 #endif
         usleep(1);
