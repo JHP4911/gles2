@@ -12,8 +12,9 @@
 #include <string>
 #include <process.h>
 #include <windows.h>
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
+#include "GL/gl.h"
+#include "GL/wglext.h"
+#include "GL3/gl3.h"
 #endif
 
 #ifndef _WIN32
@@ -28,6 +29,31 @@ using std::min;
 #define ROTATION_AXIS_X 0
 #define ROTATION_AXIS_Y 1
 #define ROTATION_AXIS_Z 2
+
+#ifdef _WIN32
+PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
+
+PFNGLCREATESHADERPROC glCreateShader = NULL;
+PFNGLDELETESHADERPROC glDeleteShader = NULL;
+PFNGLATTACHSHADERPROC glAttachShader = NULL;
+PFNGLSHADERSOURCEPROC glShaderSource = NULL;
+PFNGLGETSHADERIVPROC glGetShaderiv = NULL;
+PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog = NULL;
+PFNGLCOMPILESHADERPROC glCompileShader = NULL;
+
+PFNGLCREATEPROGRAMPROC glCreateProgram = NULL;
+PFNGLDELETEPROGRAMPROC glDeleteProgram = NULL;
+PFNGLLINKPROGRAMPROC glLinkProgram = NULL;
+PFNGLGETPROGRAMIVPROC glGetProgramiv = NULL;
+
+PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation = NULL;
+PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
+PFNGLUSEPROGRAMPROC glUseProgram = NULL;
+PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv = NULL;
+PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
+PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
+PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
+#endif
 
 class Exception : public exception
 {
@@ -58,10 +84,16 @@ class Renderer
 {
     public:
         typedef void(*OnCloseCallback)();
+#ifdef _WIN32
+        static HINSTANCE hInstance;
+#endif
 
         virtual ~Renderer();
 
         static Renderer* Initialize();
+#ifdef _WIN32
+        static bool InitGL();
+#endif
         void Terminate();
         void GetScreenSize(uint32_t &width, uint32_t &height);
         void SetOnCloseCallback(OnCloseCallback onCloseCallback);
@@ -74,8 +106,10 @@ class Renderer
         static SDL_Surface* sdlScreen;
         pthread_t eventLoopThread;
 #else
+        static HWND hWnd;
         HANDLE eventLoopThread;
-        static GLFWwindow* glfwWindow;
+        HDC hDC;
+        HGLRC hRC;
 #endif
         static bool eventLoopInitError, eventLoop;
         static uint32_t screenWidth, screenHeight;
@@ -87,6 +121,7 @@ class Renderer
 #ifndef _WIN32
         static void* WindowEventLoop(void*);
 #else
+        static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
         static void __cdecl WindowEventLoop(void*);
 #endif
 };
@@ -94,7 +129,8 @@ class Renderer
 #ifndef _WIN32
 SDL_Surface* Renderer::sdlScreen = NULL;
 #else
-GLFWwindow* Renderer::glfwWindow = NULL;
+HINSTANCE Renderer::hInstance = NULL;
+HWND Renderer::hWnd = NULL;
 #endif
 bool Renderer::eventLoop = true;
 bool Renderer::eventLoopInitError = false;
@@ -119,7 +155,12 @@ Renderer::Renderer()
     DISPMANX_UPDATE_HANDLE_T dispmanUpdate;
 
     VC_RECT_T dstRect, srcRect;
+#else
+    PIXELFORMATDESCRIPTOR pfd;
+    GLuint pixelFormat;
+#endif
 
+#ifndef _WIN32
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (eglDisplay == EGL_NO_DISPLAY) {
         throw Exception("Cannot obtain EGL display connection");
@@ -223,11 +264,46 @@ Renderer::Renderer()
 
     eventLoopInitError = false;
     eventLoopThread = (HANDLE)_beginthread(WindowEventLoop, 0, NULL);
-    while ((glfwWindow == NULL) && !eventLoopInitError) {
+    while ((hWnd == NULL) && !eventLoopInitError) {
         usleep(1);
     }
     if (eventLoopInitError) {
         throw Exception("Cannot create OpenGL window");
+    }
+
+    hDC = GetDC(hWnd);
+    if (hDC == NULL) {
+        EndEventLoop();
+        throw Exception("Cannot obtain device context handle");
+    }
+
+    memset(&pfd, 0, sizeof(pfd));
+    pfd.nSize = sizeof(pfd);
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = 24;
+    pfd.cDepthBits = 16;
+    pfd.iLayerType = PFD_MAIN_PLANE;
+
+    pixelFormat = ChoosePixelFormat(hDC, &pfd);
+    if (!pixelFormat) {
+        ReleaseDC(hWnd, hDC);
+        EndEventLoop();
+        throw Exception("Cannot obtain correct pixel format configuration");
+    }
+
+    if (!SetPixelFormat(hDC, pixelFormat, &pfd)) {
+        ReleaseDC(hWnd, hDC);
+        EndEventLoop();
+        throw Exception("Cannot set correct pixel format configuration");
+    }
+
+    hRC = wglCreateContext(hDC);
+    if (hRC == NULL) {
+        ReleaseDC(hWnd, hDC);
+        EndEventLoop();
+        throw Exception("Cannot create OpenGL rendering context");
     }
 #endif
 
@@ -240,13 +316,48 @@ Renderer::Renderer()
         throw Exception("Cannot attach EGL rendering context to EGL surface");
     }
 #else
-    glfwMakeContextCurrent(glfwWindow);
-
-    if (glewInit() != GLEW_OK) {
-        glfwMakeContextCurrent(NULL);
+    if (!wglMakeCurrent(hDC, hRC)) {
+        wglDeleteContext(hRC);
+        ReleaseDC(hWnd, hDC);
         EndEventLoop();
-        throw Exception("Cannot initialize GLEW");
+        throw Exception("Cannot attach OpenGL rendering context to thread");
     }
+
+    GLint attribs[] = {
+        WGL_CONTEXT_MAJOR_VERSION_ARB, 2,
+        WGL_CONTEXT_MINOR_VERSION_ARB, 0,
+        WGL_CONTEXT_PROFILE_MASK_ARB, WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        0
+    };
+
+    if (!InitGL()) {
+        wglMakeCurrent(NULL, NULL);
+        wglDeleteContext(hRC);
+        ReleaseDC(hWnd, hDC);
+        EndEventLoop();
+        throw Exception("Cannot initialize OpenGL specific functions");
+    }
+
+    HGLRC hRC3 = wglCreateContextAttribsARB(hDC, hRC, attribs);
+    if (hRC3 == NULL) {
+        wglMakeCurrent(NULL, NULL);
+        wglDeleteContext(hRC);
+        ReleaseDC(hWnd, hDC);
+        EndEventLoop();
+        throw Exception("Cannot create OpenGL rendering context");
+    }
+
+    wglDeleteContext(hRC);
+
+    if (!wglMakeCurrent(hDC, hRC3)) {
+        wglMakeCurrent(NULL, NULL);
+        wglDeleteContext(hRC3);
+        ReleaseDC(hWnd, hDC);
+        EndEventLoop();
+        throw Exception("Cannot attach OpenGL rendering context to thread");
+    }
+
+    hRC = hRC3;
 #endif
 }
 
@@ -254,6 +365,43 @@ Renderer::~Renderer()
 {
     Terminate();
 }
+
+#ifdef _WIN32
+bool Renderer::InitGL()
+{
+    GLint major = 0, minor = 0;
+    glGetIntegerv(GL_MAJOR_VERSION, &major);
+    glGetIntegerv(GL_MINOR_VERSION, &minor);
+    if (10 * major + minor < 30) {
+        return false;
+    }
+
+    if ((wglCreateContextAttribsARB = reinterpret_cast <PFNWGLCREATECONTEXTATTRIBSARBPROC> (wglGetProcAddress("wglCreateContextAttribsARB"))) == NULL) return false;
+
+    if ((glCreateShader = reinterpret_cast <PFNGLCREATESHADERPROC> (wglGetProcAddress("glCreateShader"))) == NULL) return false;
+    if ((glDeleteShader = reinterpret_cast <PFNGLDELETESHADERPROC> (wglGetProcAddress("glDeleteShader"))) == NULL) return false;
+    if ((glAttachShader = reinterpret_cast <PFNGLATTACHSHADERPROC> (wglGetProcAddress("glAttachShader"))) == NULL) return false;
+    if ((glShaderSource = reinterpret_cast <PFNGLSHADERSOURCEPROC> (wglGetProcAddress("glShaderSource"))) == NULL) return false;
+    if ((glGetShaderiv = reinterpret_cast <PFNGLGETSHADERIVPROC> (wglGetProcAddress("glGetShaderiv"))) == NULL) return false;
+    if ((glGetShaderInfoLog = reinterpret_cast <PFNGLGETSHADERINFOLOGPROC> (wglGetProcAddress("glGetShaderInfoLog"))) == NULL) return false;
+    if ((glCompileShader = reinterpret_cast <PFNGLCOMPILESHADERPROC> (wglGetProcAddress("glCompileShader"))) == NULL) return false;
+
+    if ((glCreateProgram = reinterpret_cast <PFNGLCREATEPROGRAMPROC> (wglGetProcAddress("glCreateProgram"))) == NULL) return false;
+    if ((glDeleteProgram = reinterpret_cast <PFNGLDELETEPROGRAMPROC> (wglGetProcAddress("glDeleteProgram"))) == NULL) return false;
+    if ((glLinkProgram = reinterpret_cast <PFNGLLINKPROGRAMPROC> (wglGetProcAddress("glLinkProgram"))) == NULL) return false;
+    if ((glGetProgramiv = reinterpret_cast <PFNGLGETPROGRAMIVPROC> (wglGetProcAddress("glGetProgramiv"))) == NULL) return false;
+
+    if ((glGetAttribLocation = reinterpret_cast <PFNGLGETATTRIBLOCATIONPROC> (wglGetProcAddress("glGetAttribLocation"))) == NULL) return false;
+    if ((glGetUniformLocation = reinterpret_cast <PFNGLGETUNIFORMLOCATIONPROC> (wglGetProcAddress("glGetUniformLocation"))) == NULL) return false;
+    if ((glUseProgram = reinterpret_cast <PFNGLUSEPROGRAMPROC> (wglGetProcAddress("glUseProgram"))) == NULL) return false;
+    if ((glUniformMatrix4fv = reinterpret_cast <PFNGLUNIFORMMATRIX4FVPROC> (wglGetProcAddress("glUniformMatrix4fv"))) == NULL) return false;
+    if ((glVertexAttribPointer = reinterpret_cast <PFNGLVERTEXATTRIBPOINTERPROC> (wglGetProcAddress("glVertexAttribPointer"))) == NULL) return false;
+    if ((glEnableVertexAttribArray = reinterpret_cast <PFNGLENABLEVERTEXATTRIBARRAYPROC> (wglGetProcAddress("glEnableVertexAttribArray"))) == NULL) return false;
+    if ((glDisableVertexAttribArray = reinterpret_cast <PFNGLDISABLEVERTEXATTRIBARRAYPROC> (wglGetProcAddress("glDisableVertexAttribArray"))) == NULL) return false;
+
+    return true;
+}
+#endif
 
 void Renderer::EndEventLoop()
 {
@@ -265,6 +413,22 @@ void Renderer::EndEventLoop()
     WaitForSingleObject(eventLoopThread, INFINITE);
 #endif
 }
+
+#ifdef _WIN32
+LRESULT CALLBACK Renderer::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    if ((msg == WM_CLOSE) || ((msg == WM_KEYDOWN) && (wParam == VK_ESCAPE))) {
+        PostQuitMessage(0);
+        return 0;
+    } else if ((msg == WM_SETCURSOR) && (LOWORD(lParam) == HTCLIENT)) {
+        SetCursor(NULL);
+        return 0;
+    } else if (msg == WM_DESTROY) {
+        return 0;
+    }
+    return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+#endif
 
 #ifndef _WIN32
 void* Renderer::WindowEventLoop(void*)
@@ -291,43 +455,75 @@ void __cdecl Renderer::WindowEventLoop(void*)
         return NULL;
     }
 #else
-	if (glfwInit() != GL_TRUE) {
+    WNDCLASSEX wcex;
+    MSG msg;
+
+    wcex.cbSize = sizeof(WNDCLASSEX);
+    wcex.style = CS_OWNDC;
+    wcex.lpfnWndProc = Renderer::WindowProc;
+    wcex.cbClsExtra = 0;
+    wcex.cbWndExtra = 0;
+    wcex.hInstance = hInstance;
+    wcex.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+    wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wcex.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wcex.lpszMenuName = NULL;
+    wcex.lpszClassName = "OpenGLWindow";
+    wcex.hIconSm = LoadIcon(NULL, IDI_APPLICATION);;
+
+    if (!RegisterClassEx(&wcex)) {
 	    eventLoopInitError = true;
         _endthread();
-	}
+    }
 
-    glfwWindowHint(GLFW_SAMPLES, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-#ifndef FORCE_FULLSCREEN
-    glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+    DWORD exStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
+    DWORD style = WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX;
 
-	glfwWindow = glfwCreateWindow(screenWidth, screenHeight, "Open GL Window", NULL, NULL);
-#else
+    RECT clientArea;
+    memset(&clientArea, 0, sizeof(RECT));
+    clientArea.right = (long)screenWidth;
+    clientArea.bottom = (long)screenHeight;
 
-	glfwWindow = glfwCreateWindow(screenWidth, screenHeight, "Open GL Window", glfwGetPrimaryMonitor(), NULL);
+    if(!AdjustWindowRectEx(&clientArea, style, false, exStyle)) {
+	    eventLoopInitError = true;
+        _endthread();
+    }
+
+    hWnd = CreateWindowEx(exStyle, "OpenGLWindow", "OpenGL Window", style, CW_USEDEFAULT, CW_USEDEFAULT,
+        clientArea.right - clientArea.left, clientArea.bottom - clientArea.top, NULL, NULL, hInstance, NULL);
+
+#ifdef FORCE_FULLSCREEN
+    SetWindowLong(hWnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+    SetWindowPos(hWnd, HWND_TOP, 0, 0, screenWidth, screenHeight, SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
 #endif
-	if (glfwWindow == NULL) {
+
+	if (hWnd == NULL) {
 	    eventLoopInitError = true;
-        glfwTerminate();
         _endthread();
 	}
 
-	glfwSetInputMode(glfwWindow, GLFW_STICKY_KEYS, GL_TRUE);
-    glfwSetInputMode(glfwWindow, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+    ShowWindow(hWnd, SW_SHOW);
 #endif
 
     while (eventLoop) {
 #ifndef _WIN32
         if (SDL_PollEvent(&event) && (event.type == SDL_KEYDOWN) && (event.key.keysym.sym == SDLK_ESCAPE)) {
-#else
-        glfwPollEvents();
-        if ((glfwGetKey(glfwWindow, GLFW_KEY_ESCAPE) == GLFW_PRESS) || (glfwWindowShouldClose(glfwWindow) != 0)) {
-#endif
             if (onCloseCallback != NULL) {
                 onCloseCallback();
             }
         }
+#else
+        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) {
+                if (onCloseCallback != NULL) {
+                    onCloseCallback();
+                }
+            } else {
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
+            }
+        }
+#endif
         usleep(1);
     }
 
@@ -336,8 +532,7 @@ void __cdecl Renderer::WindowEventLoop(void*)
     sdlScreen = NULL;
     return NULL;
 #else
-    glfwDestroyWindow(glfwWindow);
-    glfwTerminate();
+    DestroyWindow(hWnd);
     _endthread();
 #endif
 }
@@ -357,7 +552,9 @@ void Renderer::Terminate() {
         eglTerminate(eglDisplay);
         EndEventLoop();
 #else
-        glfwMakeContextCurrent(NULL);
+        wglMakeCurrent(NULL, NULL);
+        wglDeleteContext(hRC);
+        ReleaseDC(hWnd, hDC);
         EndEventLoop();
 #endif
         isTerminated = true;
@@ -378,8 +575,7 @@ bool Renderer::SwapBuffers()
 #ifndef _WIN32
     return eglSwapBuffers(eglDisplay, eglSurface) == EGL_TRUE;
 #else
-    glfwSwapBuffers(glfwWindow);
-    return true;
+    return ::SwapBuffers(hDC);
 #endif
 }
 
@@ -704,6 +900,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #endif
 {
     quit = false;
+
+#ifdef _WIN32
+    Renderer::hInstance = hInstance;
+#endif
     Renderer* renderer = NULL;
 
     try {

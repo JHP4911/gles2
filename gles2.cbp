@@ -34,15 +34,9 @@
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
-			<Add directory="glew/include" />
-			<Add directory="glfw/include" />
 		</Compiler>
 		<Linker>
-			<Add library="glew32.dll" />
-			<Add library="glfw3" />
 			<Add library="opengl32" />
-			<Add directory="glew/lib" />
-			<Add directory="glfw/lib" />
 		</Linker>
 		<Unit filename="gles2.cpp" />
 		<Extensions>
