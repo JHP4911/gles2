@@ -418,6 +418,9 @@ void Renderer::EndEventLoop()
 LRESULT CALLBACK Renderer::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if ((msg == WM_CLOSE) || ((msg == WM_KEYDOWN) && (wParam == VK_ESCAPE))) {
+        if (onCloseCallback != NULL) {
+            onCloseCallback();
+        }
         PostQuitMessage(0);
         return 0;
     } else if ((msg == WM_SETCURSOR) && (LOWORD(lParam) == HTCLIENT)) {
@@ -515,10 +518,8 @@ void __cdecl Renderer::WindowEventLoop(void*)
 #else
         if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
+                windowExitCode = msg.wParam;
                 eventLoop = false;
-                /*if (onCloseCallback != NULL) {
-                    onCloseCallback();
-                }*/
             } else {
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
@@ -534,7 +535,6 @@ void __cdecl Renderer::WindowEventLoop(void*)
     return NULL;
 #else
     DestroyWindow(hWnd);
-    windowExitCode = msg.wParam;
     _endthread();
 #endif
 }
