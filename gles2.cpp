@@ -91,9 +91,6 @@ class Renderer
         virtual ~Renderer();
 
         static Renderer* Initialize();
-#ifdef _WIN32
-        static bool InitGL();
-#endif
         void Terminate();
         void GetScreenSize(uint32_t &width, uint32_t &height);
         void SetOnCloseCallback(OnCloseCallback onCloseCallback);
@@ -121,6 +118,7 @@ class Renderer
 #ifndef _WIN32
         static void* WindowEventLoop(void*);
 #else
+        static bool InitGL3();
         static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
         static void __cdecl WindowEventLoop(void*);
 #endif
@@ -330,7 +328,7 @@ Renderer::Renderer()
         0
     };
 
-    if (!InitGL()) {
+    if (!InitGL3()) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
@@ -367,7 +365,7 @@ Renderer::~Renderer()
 }
 
 #ifdef _WIN32
-bool Renderer::InitGL()
+bool Renderer::InitGL3()
 {
     GLint major = 0, minor = 0;
     glGetIntegerv(GL_MAJOR_VERSION, &major);
