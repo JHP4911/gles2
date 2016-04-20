@@ -85,6 +85,7 @@ class Renderer
     public:
         typedef void(*OnCloseCallback)();
 #ifdef _WIN32
+        static int windowExitCode;
         static HINSTANCE hInstance;
 #endif
 
@@ -127,6 +128,7 @@ class Renderer
 #ifndef _WIN32
 SDL_Surface* Renderer::sdlScreen = NULL;
 #else
+int Renderer::windowExitCode = 0;
 HINSTANCE Renderer::hInstance = NULL;
 HWND Renderer::hWnd = NULL;
 #endif
@@ -513,9 +515,10 @@ void __cdecl Renderer::WindowEventLoop(void*)
 #else
         if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
-                if (onCloseCallback != NULL) {
+                eventLoop = false;
+                /*if (onCloseCallback != NULL) {
                     onCloseCallback();
-                }
+                }*/
             } else {
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
@@ -531,6 +534,7 @@ void __cdecl Renderer::WindowEventLoop(void*)
     return NULL;
 #else
     DestroyWindow(hWnd);
+    windowExitCode = msg.wParam;
     _endthread();
 #endif
 }
@@ -994,5 +998,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         return 1;
     }
 
-	return 0;
+#ifndef _WIN32
+    return 0;
+#else
+	return Renderer::windowExitCode;
+#endif
 }
