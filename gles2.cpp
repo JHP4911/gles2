@@ -80,7 +80,7 @@ const char* Exception::what() const throw()
     return exceptionMessage.c_str();
 }
 
-class Renderer
+class Window
 {
     public:
         typedef void(*OnCloseCallback)();
@@ -89,11 +89,11 @@ class Renderer
         static HINSTANCE hInstance;
 #endif
 
-        virtual ~Renderer();
+        virtual ~Window();
 
-        static Renderer* Initialize();
+        static Window* Initialize();
         void Terminate();
-        void GetScreenSize(uint32_t &width, uint32_t &height);
+        void GetClientSize(uint32_t &width, uint32_t &height);
         void SetOnCloseCallback(OnCloseCallback onCloseCallback);
         bool SwapBuffers();
     private:
@@ -110,35 +110,35 @@ class Renderer
         HGLRC hRC;
 #endif
         static bool eventLoopInitError, eventLoop;
-        static uint32_t screenWidth, screenHeight;
+        static uint32_t clientWidth, clientHeight;
         static OnCloseCallback onCloseCallback;
         bool isTerminated;
 
-        Renderer();
+        Window();
         void EndEventLoop();
 #ifndef _WIN32
-        static void* WindowEventLoop(void*);
+        static void* EventLoop(void*);
 #else
         static bool InitGL3();
         static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-        static void __cdecl WindowEventLoop(void*);
+        static void __cdecl EventLoop(void*);
 #endif
 };
 
 #ifndef _WIN32
-SDL_Surface* Renderer::sdlScreen = NULL;
+SDL_Surface* Window::sdlScreen = NULL;
 #else
-int Renderer::windowExitCode = 0;
-HINSTANCE Renderer::hInstance = NULL;
-HWND Renderer::hWnd = NULL;
+int Window::windowExitCode = 0;
+HINSTANCE Window::hInstance = NULL;
+HWND Window::hWnd = NULL;
 #endif
-bool Renderer::eventLoop = true;
-bool Renderer::eventLoopInitError = false;
-uint32_t Renderer::screenWidth = 0;
-uint32_t Renderer::screenHeight = 0;
-Renderer::OnCloseCallback Renderer::onCloseCallback = NULL;
+bool Window::eventLoop = true;
+bool Window::eventLoopInitError = false;
+uint32_t Window::clientWidth = 0;
+uint32_t Window::clientHeight = 0;
+Window::OnCloseCallback Window::onCloseCallback = NULL;
 
-Renderer::Renderer()
+Window::Window()
 {
     isTerminated = false;
 
@@ -203,14 +203,14 @@ Renderer::Renderer()
         throw Exception("Cannot create EGL rendering context");
     }
 
-    if (graphics_get_display_size(0, &screenWidth, &screenHeight) < 0) {
+    if (graphics_get_display_size(0, &clientWidth, &clientHeight) < 0) {
         eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
         throw Exception("Cannot obtain screen resolution");
     }
 
     eventLoopInitError = false;
-    int returnCode = pthread_create(&eventLoopThread, NULL, &Renderer::WindowEventLoop, NULL);
+    int returnCode = pthread_create(&eventLoopThread, NULL, &Window::EventLoop, NULL);
     if (returnCode) {
         eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
@@ -227,13 +227,13 @@ Renderer::Renderer()
 
     dstRect.x = 0;
     dstRect.y = 0;
-    dstRect.width = screenWidth;
-    dstRect.height = screenHeight;
+    dstRect.width = clientWidth;
+    dstRect.height = clientHeight;
 
     srcRect.x = 0;
     srcRect.y = 0;
-    srcRect.width = screenWidth << 16;
-    srcRect.height = screenHeight << 16;
+    srcRect.width = clientWidth << 16;
+    srcRect.height = clientHeight << 16;
 
     dispmanDisplay = vc_dispmanx_display_open(0);
     dispmanUpdate = vc_dispmanx_update_start(0);
@@ -242,8 +242,8 @@ Renderer::Renderer()
         DISPMANX_PROTECTION_NONE, 0, 0, (DISPMANX_TRANSFORM_T)0);
 
     nativeWindow.element = dispmanElement;
-    nativeWindow.width = screenWidth;
-    nativeWindow.height = screenHeight;
+    nativeWindow.width = clientWidth;
+    nativeWindow.height = clientHeight;
     vc_dispmanx_update_submit_sync(dispmanUpdate);
 
     eglSurface = eglCreateWindowSurface(eglDisplay, config, &nativeWindow, NULL);
@@ -255,15 +255,15 @@ Renderer::Renderer()
     }
 #else
 #ifndef FORCE_FULLSCREEN
-    screenWidth = 400;
-    screenHeight = 300;
+    clientWidth = 640;
+    clientHeight = 480;
 #else
-    screenWidth = GetSystemMetrics(SM_CXSCREEN);
-    screenHeight = GetSystemMetrics(SM_CYSCREEN);
+    clientWidth = GetSystemMetrics(SM_CXSCREEN);
+    clientHeight = GetSystemMetrics(SM_CYSCREEN);
 #endif
 
     eventLoopInitError = false;
-    eventLoopThread = (HANDLE)_beginthread(WindowEventLoop, 0, NULL);
+    eventLoopThread = (HANDLE)_beginthread(EventLoop, 0, NULL);
     while ((hWnd == NULL) && !eventLoopInitError) {
         usleep(1);
     }
@@ -361,13 +361,13 @@ Renderer::Renderer()
 #endif
 }
 
-Renderer::~Renderer()
+Window::~Window()
 {
     Terminate();
 }
 
 #ifdef _WIN32
-bool Renderer::InitGL3()
+bool Window::InitGL3()
 {
     GLint major = 0, minor = 0;
     glGetIntegerv(GL_MAJOR_VERSION, &major);
@@ -403,7 +403,7 @@ bool Renderer::InitGL3()
 }
 #endif
 
-void Renderer::EndEventLoop()
+void Window::EndEventLoop()
 {
     eventLoop = false;
 
@@ -415,7 +415,7 @@ void Renderer::EndEventLoop()
 }
 
 #ifdef _WIN32
-LRESULT CALLBACK Renderer::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if ((msg == WM_CLOSE) || ((msg == WM_KEYDOWN) && (wParam == VK_ESCAPE))) {
         if (onCloseCallback != NULL) {
@@ -433,9 +433,9 @@ LRESULT CALLBACK Renderer::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 #endif
 
 #ifndef _WIN32
-void* Renderer::WindowEventLoop(void*)
+void* Window::EventLoop(void*)
 #else
-void __cdecl Renderer::WindowEventLoop(void*)
+void __cdecl Window::EventLoop(void*)
 #endif
 {
     eventLoopInitError = false;
@@ -450,7 +450,7 @@ void __cdecl Renderer::WindowEventLoop(void*)
 
     SDL_WM_SetCaption("SDL Window", "SDL Window");
 
-    sdlScreen = SDL_SetVideoMode(screenWidth, screenHeight, 0, 0);
+    sdlScreen = SDL_SetVideoMode(clientWidth, clientHeight, 0, 0);
     if (sdlScreen == NULL) {
         eventLoopInitError = true;
         SDL_Quit();
@@ -462,7 +462,7 @@ void __cdecl Renderer::WindowEventLoop(void*)
 
     wcex.cbSize = sizeof(WNDCLASSEX);
     wcex.style = CS_OWNDC;
-    wcex.lpfnWndProc = Renderer::WindowProc;
+    wcex.lpfnWndProc = Window::WindowProc;
     wcex.cbClsExtra = 0;
     wcex.cbWndExtra = 0;
     wcex.hInstance = hInstance;
@@ -483,8 +483,8 @@ void __cdecl Renderer::WindowEventLoop(void*)
 
     RECT clientArea;
     memset(&clientArea, 0, sizeof(RECT));
-    clientArea.right = (long)screenWidth;
-    clientArea.bottom = (long)screenHeight;
+    clientArea.right = (long)clientWidth;
+    clientArea.bottom = (long)clientHeight;
 
     if(!AdjustWindowRectEx(&clientArea, style, false, exStyle)) {
 	    eventLoopInitError = true;
@@ -496,7 +496,7 @@ void __cdecl Renderer::WindowEventLoop(void*)
 
 #ifdef FORCE_FULLSCREEN
     SetWindowLong(hWnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
-    SetWindowPos(hWnd, HWND_TOP, 0, 0, screenWidth, screenHeight, SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    SetWindowPos(hWnd, HWND_TOP, 0, 0, clientWidth, clientHeight, SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
 #endif
 
 	if (hWnd == NULL) {
@@ -542,13 +542,13 @@ void __cdecl Renderer::WindowEventLoop(void*)
 #endif
 }
 
-Renderer* Renderer::Initialize()
+Window* Window::Initialize()
 {
-    static Renderer instance;
+    static Window instance;
     return &instance;
 }
 
-void Renderer::Terminate() {
+void Window::Terminate() {
     if (!isTerminated) {
 #ifndef _WIN32
         eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -566,13 +566,13 @@ void Renderer::Terminate() {
     }
 }
 
-void Renderer::GetScreenSize(uint32_t &width, uint32_t &height)
+void Window::GetClientSize(uint32_t &width, uint32_t &height)
 {
-    width = screenWidth;
-    height = screenHeight;
+    width = clientWidth;
+    height = clientHeight;
 }
 
-bool Renderer::SwapBuffers()
+bool Window::SwapBuffers()
 {
     if (isTerminated) {
         return false;
@@ -584,7 +584,7 @@ bool Renderer::SwapBuffers()
 #endif
 }
 
-void Renderer::SetOnCloseCallback(OnCloseCallback callback)
+void Window::SetOnCloseCallback(OnCloseCallback callback)
 {
     onCloseCallback = callback;
 }
@@ -907,13 +907,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     quit = false;
 
 #ifdef _WIN32
-    Renderer::hInstance = hInstance;
+    Window::hInstance = hInstance;
 #endif
-    Renderer* renderer = NULL;
+    Window* window = NULL;
 
     try {
-        renderer = Renderer::Initialize();
-        renderer->SetOnCloseCallback(CloseRequestHandler);
+        window = Window::Initialize();
+        window->SetOnCloseCallback(CloseRequestHandler);
 
         char vertexShaderCode[] =
             "attribute vec3 vertexPosition;                             \n"
@@ -959,7 +959,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         };
 
         uint32_t width, height;
-        renderer->GetScreenSize(width, height);
+        window->GetClientSize(width, height);
         glViewport(0, 0, width, height);
 
         while (!quit) {
@@ -982,16 +982,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             glDisableVertexAttribArray(vertPositionAttribute);
             glDisableVertexAttribArray(vertColorAttribute);
 
-            renderer->SwapBuffers();
+            window->SwapBuffers();
 
             angle += 1.0f;
             usleep(1);
         }
 
-        renderer->Terminate();
+        window->Terminate();
     } catch (exception &e) {
-        if (renderer != NULL) {
-            renderer->Terminate();
+        if (window != NULL) {
+            window->Terminate();
         }
         #ifndef _WIN32
             cout << e.what() << endl;
@@ -1004,6 +1004,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #ifndef _WIN32
     return 0;
 #else
-	return Renderer::windowExitCode;
+	return Window::windowExitCode;
 #endif
 }
