@@ -119,7 +119,7 @@ class Window
 #ifndef _WIN32
         static void* EventLoop(void*);
 #else
-        static bool InitGL3();
+        static bool InitGLExtensions();
         static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
         static void __cdecl EventLoop(void*);
 #endif
@@ -330,7 +330,7 @@ Window::Window()
         0
     };
 
-    if (!InitGL3()) {
+    if (!InitGLExtensions()) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
@@ -367,7 +367,7 @@ Window::~Window()
 }
 
 #ifdef _WIN32
-bool Window::InitGL3()
+bool Window::InitGLExtensions()
 {
     GLint major = 0, minor = 0;
     glGetIntegerv(GL_MAJOR_VERSION, &major);
