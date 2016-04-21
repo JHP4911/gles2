@@ -85,7 +85,7 @@ class Window
     public:
         typedef void(*OnCloseCallback)();
 #ifdef _WIN32
-        static int windowExitCode;
+        static int exitCode;
         static HINSTANCE hInstance;
 #endif
 
@@ -128,7 +128,7 @@ class Window
 #ifndef _WIN32
 SDL_Surface* Window::sdlScreen = NULL;
 #else
-int Window::windowExitCode = 0;
+int Window::exitCode = 0;
 HINSTANCE Window::hInstance = NULL;
 HWND Window::hWnd = NULL;
 #endif
@@ -518,7 +518,7 @@ void __cdecl Window::EventLoop(void*)
     while (true) {
         if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
-                windowExitCode = msg.wParam;
+                exitCode = msg.wParam;
                 break;
             } else {
                 TranslateMessage(&msg);
@@ -1004,6 +1004,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #ifndef _WIN32
     return 0;
 #else
-	return Window::windowExitCode;
+	return Window::exitCode;
 #endif
 }
