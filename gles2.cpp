@@ -46,6 +46,10 @@ PFNGLDELETEPROGRAMPROC glDeleteProgram = NULL;
 PFNGLLINKPROGRAMPROC glLinkProgram = NULL;
 PFNGLGETPROGRAMIVPROC glGetProgramiv = NULL;
 
+PFNGLGENBUFFERSPROC glGenBuffers = NULL;
+PFNGLBINDBUFFERPROC glBindBuffer = NULL;
+PFNGLBUFFERDATAPROC glBufferData = NULL;
+
 PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation = NULL;
 PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
 PFNGLUSEPROGRAMPROC glUseProgram = NULL;
@@ -390,6 +394,10 @@ bool Window::InitGLExtensions()
     if ((glDeleteProgram = reinterpret_cast <PFNGLDELETEPROGRAMPROC> (wglGetProcAddress("glDeleteProgram"))) == NULL) return false;
     if ((glLinkProgram = reinterpret_cast <PFNGLLINKPROGRAMPROC> (wglGetProcAddress("glLinkProgram"))) == NULL) return false;
     if ((glGetProgramiv = reinterpret_cast <PFNGLGETPROGRAMIVPROC> (wglGetProcAddress("glGetProgramiv"))) == NULL) return false;
+
+    if ((glGenBuffers = reinterpret_cast <PFNGLGENBUFFERSPROC> (wglGetProcAddress("glGenBuffers"))) == NULL) return false;
+    if ((glBindBuffer = reinterpret_cast <PFNGLBINDBUFFERPROC> (wglGetProcAddress("glBindBuffer"))) == NULL) return false;
+    if ((glBufferData = reinterpret_cast <PFNGLBUFFERDATAPROC> (wglGetProcAddress("glBufferData"))) == NULL) return false;
 
     if ((glGetAttribLocation = reinterpret_cast <PFNGLGETATTRIBLOCATIONPROC> (wglGetProcAddress("glGetAttribLocation"))) == NULL) return false;
     if ((glGetUniformLocation = reinterpret_cast <PFNGLGETUNIFORMLOCATIONPROC> (wglGetProcAddress("glGetUniformLocation"))) == NULL) return false;
@@ -962,6 +970,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         window->GetClientSize(width, height);
         glViewport(0, 0, width, height);
 
+        GLuint vertexBuffer;
+        glGenBuffers(1, &vertexBuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertexData), vertexData, GL_STATIC_DRAW);
+
+        GLuint colorBuffer;
+        glGenBuffers(1, &colorBuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertexData), colorData, GL_STATIC_DRAW);
+
         while (!quit) {
             Matrix rotation = Matrix::GenerateRotation(angle, ROTATION_AXIS_Z);
 
@@ -971,8 +989,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             glUseProgram(program.GetProgram());
             glUniformMatrix4fv(rotMatrixUniform, 1, GL_FALSE, rotation.GetData());
 
-            glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, colorData);
-            glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, vertexData);
+            glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+            glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+            glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+            glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
             glEnableVertexAttribArray(vertColorAttribute);
             glEnableVertexAttribArray(vertPositionAttribute);
