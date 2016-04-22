@@ -489,9 +489,9 @@ void __cdecl Window::EventLoop(void*)
         return NULL;
     }
 
-    SDL_WM_SetCaption("SDL Window", "SDL Window");
+    SDL_WM_SetCaption("SDL Window", "SDL Icon");
 
-    sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
+    sdlScreen = SDL_SetVideoMode(clientWidth, clientHeight, 0, 0);
     if (sdlScreen == NULL) {
         eventLoopInitError = true;
         SDL_Quit();
@@ -581,7 +581,7 @@ void __cdecl Window::EventLoop(void*)
     return NULL;
 #else
     DestroyWindow(hWnd);
-    UnregisterClass("OpenGLWindow",hInstance);
+    UnregisterClass("OpenGLWindow", hInstance);
     _endthread();
 #endif
 }
