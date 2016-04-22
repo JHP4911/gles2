@@ -90,16 +90,15 @@ class Window
         typedef void(*OnCloseCallback)();
 #ifdef _WIN32
         static int exitCode;
-        static HINSTANCE hInstance;
 #endif
 
         virtual ~Window();
 
         static Window* Initialize();
+        bool SwapBuffers();
         void Terminate();
         void GetClientSize(uint32_t &width, uint32_t &height);
         void SetOnCloseCallback(OnCloseCallback onCloseCallback);
-        bool SwapBuffers();
     private:
 #ifndef _WIN32
         EGLDisplay eglDisplay;
@@ -110,8 +109,8 @@ class Window
 #else
         static HWND hWnd;
         HANDLE eventLoopThread;
-        HDC hDC;
         HGLRC hRC;
+        HDC hDC;
 #endif
         static bool eventLoopInitError, eventLoop;
         static uint32_t clientWidth, clientHeight;
@@ -133,7 +132,6 @@ class Window
 SDL_Surface* Window::sdlScreen = NULL;
 #else
 int Window::exitCode = 0;
-HINSTANCE Window::hInstance = NULL;
 HWND Window::hWnd = NULL;
 #endif
 bool Window::eventLoop = true;
@@ -370,6 +368,41 @@ Window::~Window()
     Terminate();
 }
 
+Window* Window::Initialize()
+{
+    static Window instance;
+    return &instance;
+}
+
+bool Window::SwapBuffers()
+{
+    if (isTerminated) {
+        return false;
+    }
+#ifndef _WIN32
+    return eglSwapBuffers(eglDisplay, eglSurface) == EGL_TRUE;
+#else
+    return ::SwapBuffers(hDC);
+#endif
+}
+
+void Window::Terminate() {
+    if (!isTerminated) {
+#ifndef _WIN32
+        eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        eglDestroySurface(eglDisplay, eglSurface);
+        eglDestroyContext(eglDisplay, eglContext);
+        eglTerminate(eglDisplay);
+#else
+        wglMakeCurrent(NULL, NULL);
+        wglDeleteContext(hRC);
+        ReleaseDC(hWnd, hDC);
+#endif
+        EndEventLoop();
+        isTerminated = true;
+    }
+}
+
 #ifdef _WIN32
 bool Window::InitGLExtensions()
 {
@@ -458,16 +491,18 @@ void __cdecl Window::EventLoop(void*)
 
     SDL_WM_SetCaption("SDL Window", "SDL Window");
 
-    sdlScreen = SDL_SetVideoMode(clientWidth, clientHeight, 0, 0);
+    sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
     if (sdlScreen == NULL) {
         eventLoopInitError = true;
         SDL_Quit();
         return NULL;
     }
 #else
+    HINSTANCE hInstance;
     WNDCLASSEX wcex;
     MSG msg;
 
+    hInstance = GetModuleHandle(NULL);
     wcex.cbSize = sizeof(WNDCLASSEX);
     wcex.style = CS_OWNDC;
     wcex.lpfnWndProc = Window::WindowProc;
@@ -546,50 +581,15 @@ void __cdecl Window::EventLoop(void*)
     return NULL;
 #else
     DestroyWindow(hWnd);
+    UnregisterClass("OpenGLWindow",hInstance);
     _endthread();
 #endif
-}
-
-Window* Window::Initialize()
-{
-    static Window instance;
-    return &instance;
-}
-
-void Window::Terminate() {
-    if (!isTerminated) {
-#ifndef _WIN32
-        eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        eglDestroySurface(eglDisplay, eglSurface);
-        eglDestroyContext(eglDisplay, eglContext);
-        eglTerminate(eglDisplay);
-        EndEventLoop();
-#else
-        wglMakeCurrent(NULL, NULL);
-        wglDeleteContext(hRC);
-        ReleaseDC(hWnd, hDC);
-        EndEventLoop();
-#endif
-        isTerminated = true;
-    }
 }
 
 void Window::GetClientSize(uint32_t &width, uint32_t &height)
 {
     width = clientWidth;
     height = clientHeight;
-}
-
-bool Window::SwapBuffers()
-{
-    if (isTerminated) {
-        return false;
-    }
-#ifndef _WIN32
-    return eglSwapBuffers(eglDisplay, eglSurface) == EGL_TRUE;
-#else
-    return ::SwapBuffers(hDC);
-#endif
 }
 
 void Window::SetOnCloseCallback(OnCloseCallback callback)
@@ -913,10 +913,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #endif
 {
     quit = false;
-
-#ifdef _WIN32
-    Window::hInstance = hInstance;
-#endif
     Window* window = NULL;
 
     try {
@@ -1025,6 +1021,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #ifndef _WIN32
     return 0;
 #else
-	return Window::exitCode;
+    return Window::exitCode;
 #endif
 }
