@@ -10,6 +10,7 @@
 #include <bcm_host.h>
 #else
 #include <string>
+#include <sstream>
 #include <process.h>
 #include <windows.h>
 #include "GL/gl.h"
@@ -21,6 +22,8 @@
 using std::cin;
 using std::cout;
 using std::endl;
+#else
+using std::ostringstream;
 #endif
 using std::string;
 using std::exception;
@@ -29,35 +32,6 @@ using std::min;
 #define ROTATION_AXIS_X 0
 #define ROTATION_AXIS_Y 1
 #define ROTATION_AXIS_Z 2
-
-#ifdef _WIN32
-PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
-
-PFNGLCREATESHADERPROC glCreateShader = NULL;
-PFNGLDELETESHADERPROC glDeleteShader = NULL;
-PFNGLATTACHSHADERPROC glAttachShader = NULL;
-PFNGLSHADERSOURCEPROC glShaderSource = NULL;
-PFNGLGETSHADERIVPROC glGetShaderiv = NULL;
-PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog = NULL;
-PFNGLCOMPILESHADERPROC glCompileShader = NULL;
-
-PFNGLCREATEPROGRAMPROC glCreateProgram = NULL;
-PFNGLDELETEPROGRAMPROC glDeleteProgram = NULL;
-PFNGLLINKPROGRAMPROC glLinkProgram = NULL;
-PFNGLGETPROGRAMIVPROC glGetProgramiv = NULL;
-
-PFNGLGENBUFFERSPROC glGenBuffers = NULL;
-PFNGLBINDBUFFERPROC glBindBuffer = NULL;
-PFNGLBUFFERDATAPROC glBufferData = NULL;
-
-PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation = NULL;
-PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
-PFNGLUSEPROGRAMPROC glUseProgram = NULL;
-PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv = NULL;
-PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
-PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
-PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
-#endif
 
 class Exception : public exception
 {
@@ -122,7 +96,6 @@ class Window
 #ifndef _WIN32
         static void* EventLoop(void*);
 #else
-        static bool InitGLExtensions();
         static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
         static void __cdecl EventLoop(void*);
 #endif
@@ -160,6 +133,7 @@ Window::Window()
 #else
     PIXELFORMATDESCRIPTOR pfd;
     GLuint pixelFormat;
+    PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
 #endif
 
 #ifndef _WIN32
@@ -332,12 +306,13 @@ Window::Window()
         0
     };
 
-    if (!InitGLExtensions()) {
+    wglCreateContextAttribsARB = reinterpret_cast <PFNWGLCREATECONTEXTATTRIBSARBPROC> (wglGetProcAddress("wglCreateContextAttribsARB"));
+    if (wglCreateContextAttribsARB == NULL) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
         EndEventLoop();
-        throw Exception("Cannot initialize OpenGL specific functions");
+        throw Exception("Cannot initialize wglCreateContextAttribsARB function");
     }
 
     HGLRC hRC3 = wglCreateContextAttribsARB(hDC, hRC, attribs);
@@ -402,47 +377,6 @@ void Window::Terminate() {
         isTerminated = true;
     }
 }
-
-#ifdef _WIN32
-bool Window::InitGLExtensions()
-{
-    GLint major = 0, minor = 0;
-    glGetIntegerv(GL_MAJOR_VERSION, &major);
-    glGetIntegerv(GL_MINOR_VERSION, &minor);
-    if (10 * major + minor < 30) {
-        return false;
-    }
-
-    if ((wglCreateContextAttribsARB = reinterpret_cast <PFNWGLCREATECONTEXTATTRIBSARBPROC> (wglGetProcAddress("wglCreateContextAttribsARB"))) == NULL) return false;
-
-    if ((glCreateShader = reinterpret_cast <PFNGLCREATESHADERPROC> (wglGetProcAddress("glCreateShader"))) == NULL) return false;
-    if ((glDeleteShader = reinterpret_cast <PFNGLDELETESHADERPROC> (wglGetProcAddress("glDeleteShader"))) == NULL) return false;
-    if ((glAttachShader = reinterpret_cast <PFNGLATTACHSHADERPROC> (wglGetProcAddress("glAttachShader"))) == NULL) return false;
-    if ((glShaderSource = reinterpret_cast <PFNGLSHADERSOURCEPROC> (wglGetProcAddress("glShaderSource"))) == NULL) return false;
-    if ((glGetShaderiv = reinterpret_cast <PFNGLGETSHADERIVPROC> (wglGetProcAddress("glGetShaderiv"))) == NULL) return false;
-    if ((glGetShaderInfoLog = reinterpret_cast <PFNGLGETSHADERINFOLOGPROC> (wglGetProcAddress("glGetShaderInfoLog"))) == NULL) return false;
-    if ((glCompileShader = reinterpret_cast <PFNGLCOMPILESHADERPROC> (wglGetProcAddress("glCompileShader"))) == NULL) return false;
-
-    if ((glCreateProgram = reinterpret_cast <PFNGLCREATEPROGRAMPROC> (wglGetProcAddress("glCreateProgram"))) == NULL) return false;
-    if ((glDeleteProgram = reinterpret_cast <PFNGLDELETEPROGRAMPROC> (wglGetProcAddress("glDeleteProgram"))) == NULL) return false;
-    if ((glLinkProgram = reinterpret_cast <PFNGLLINKPROGRAMPROC> (wglGetProcAddress("glLinkProgram"))) == NULL) return false;
-    if ((glGetProgramiv = reinterpret_cast <PFNGLGETPROGRAMIVPROC> (wglGetProcAddress("glGetProgramiv"))) == NULL) return false;
-
-    if ((glGenBuffers = reinterpret_cast <PFNGLGENBUFFERSPROC> (wglGetProcAddress("glGenBuffers"))) == NULL) return false;
-    if ((glBindBuffer = reinterpret_cast <PFNGLBINDBUFFERPROC> (wglGetProcAddress("glBindBuffer"))) == NULL) return false;
-    if ((glBufferData = reinterpret_cast <PFNGLBUFFERDATAPROC> (wglGetProcAddress("glBufferData"))) == NULL) return false;
-
-    if ((glGetAttribLocation = reinterpret_cast <PFNGLGETATTRIBLOCATIONPROC> (wglGetProcAddress("glGetAttribLocation"))) == NULL) return false;
-    if ((glGetUniformLocation = reinterpret_cast <PFNGLGETUNIFORMLOCATIONPROC> (wglGetProcAddress("glGetUniformLocation"))) == NULL) return false;
-    if ((glUseProgram = reinterpret_cast <PFNGLUSEPROGRAMPROC> (wglGetProcAddress("glUseProgram"))) == NULL) return false;
-    if ((glUniformMatrix4fv = reinterpret_cast <PFNGLUNIFORMMATRIX4FVPROC> (wglGetProcAddress("glUniformMatrix4fv"))) == NULL) return false;
-    if ((glVertexAttribPointer = reinterpret_cast <PFNGLVERTEXATTRIBPOINTERPROC> (wglGetProcAddress("glVertexAttribPointer"))) == NULL) return false;
-    if ((glEnableVertexAttribArray = reinterpret_cast <PFNGLENABLEVERTEXATTRIBARRAYPROC> (wglGetProcAddress("glEnableVertexAttribArray"))) == NULL) return false;
-    if ((glDisableVertexAttribArray = reinterpret_cast <PFNGLDISABLEVERTEXATTRIBARRAYPROC> (wglGetProcAddress("glDisableVertexAttribArray"))) == NULL) return false;
-
-    return true;
-}
-#endif
 
 void Window::EndEventLoop()
 {
@@ -608,13 +542,54 @@ class ShaderProgram
         GLuint vertexShader;
         GLuint fragmentShader;
         GLuint program;
+#ifdef _WIN32
+        static PFNGLATTACHSHADERPROC glAttachShader;
+        static PFNGLCOMPILESHADERPROC glCompileShader;
+        static PFNGLCREATEPROGRAMPROC glCreateProgram;
+        static PFNGLCREATESHADERPROC glCreateShader;
+        static PFNGLDELETEPROGRAMPROC glDeleteProgram;
+        static PFNGLDELETESHADERPROC glDeleteShader;
+        static PFNGLGETPROGRAMIVPROC glGetProgramiv;
+        static PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog;
+        static PFNGLGETSHADERIVPROC glGetShaderiv;
+        static PFNGLLINKPROGRAMPROC glLinkProgram;
+        static PFNGLSHADERSOURCEPROC glShaderSource;
+
+#endif
 
         GLuint LoadShader(const char* shaderCode, GLenum shaderType);
+#ifdef _WIN32
+        template <typename T>
+        void InitFunction(T &func, string funcName);
+#endif
 };
+
+#ifdef _WIN32
+PFNGLATTACHSHADERPROC ShaderProgram::glAttachShader = NULL;
+PFNGLCOMPILESHADERPROC ShaderProgram::glCompileShader = NULL;
+PFNGLCREATEPROGRAMPROC ShaderProgram::glCreateProgram = NULL;
+PFNGLCREATESHADERPROC ShaderProgram::glCreateShader = NULL;
+PFNGLDELETEPROGRAMPROC ShaderProgram::glDeleteProgram = NULL;
+PFNGLDELETESHADERPROC ShaderProgram::glDeleteShader = NULL;
+PFNGLGETPROGRAMIVPROC ShaderProgram::glGetProgramiv = NULL;
+PFNGLGETSHADERINFOLOGPROC ShaderProgram::glGetShaderInfoLog = NULL;
+PFNGLGETSHADERIVPROC ShaderProgram::glGetShaderiv = NULL;
+PFNGLLINKPROGRAMPROC ShaderProgram::glLinkProgram = NULL;
+PFNGLSHADERSOURCEPROC ShaderProgram::glShaderSource = NULL;
+#endif
 
 ShaderProgram::ShaderProgram(const char* vertexShaderCode, const char* fragmentShaderCode)
 {
     GLint isLinked;
+
+#ifdef _WIN32
+    InitFunction(glAttachShader, "glAttachShader");
+    InitFunction(glCreateProgram, "glCreateProgram");
+    InitFunction(glDeleteProgram, "glDeleteProgram");
+    InitFunction(glDeleteShader, "glDeleteShader");
+    InitFunction(glGetProgramiv, "glGetProgramiv");
+    InitFunction(glLinkProgram, "glLinkProgram");
+#endif
 
     vertexShader = LoadShader(vertexShaderCode, GL_VERTEX_SHADER);
     if (vertexShader == 0) {
@@ -660,6 +635,14 @@ GLuint ShaderProgram::LoadShader(const char* shaderCode, GLenum shaderType)
     GLuint shader;
     GLint isCompiled;
 
+#ifdef _WIN32
+    InitFunction(glCreateShader, "glCreateShader");
+    InitFunction(glCompileShader, "glCompileShader");
+    InitFunction(glGetShaderInfoLog, "glGetShaderInfoLog");
+    InitFunction(glGetShaderiv, "glGetShaderiv");
+    InitFunction(glShaderSource, "glShaderSource");
+#endif
+
     shader = glCreateShader(shaderType);
     if (shader == 0)
         return 0;
@@ -686,6 +669,20 @@ GLuint ShaderProgram::LoadShader(const char* shaderCode, GLenum shaderType)
     }
     return shader;
 }
+
+#ifdef _WIN32
+template <typename T>
+void ShaderProgram::InitFunction(T &func, string funcName)
+{
+    ostringstream oss;
+    if (func == NULL) {
+        if ((func = reinterpret_cast <T> (wglGetProcAddress(funcName.c_str()))) == NULL) {
+            oss << "Cannot initialize " << funcName << " function";
+            throw Exception(oss.str());
+        }
+    }
+}
+#endif
 
 class Matrix
 {
@@ -902,9 +899,36 @@ void Matrix::SetSize(GLuint width, GLuint height)
 
 bool quit;
 
+#ifdef _WIN32
+PFNGLBINDBUFFERPROC glBindBuffer;
+PFNGLBUFFERDATAPROC glBufferData;
+PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
+PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
+PFNGLGENBUFFERSPROC glGenBuffers;
+PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
+PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
+PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
+PFNGLUSEPROGRAMPROC glUseProgram;
+PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
+#endif
+
 void CloseRequestHandler() {
     quit = true;
 }
+
+#ifdef _WIN32
+template <typename T>
+void InitGLFunction(T &func, string funcName)
+{
+    ostringstream oss;
+    if (func == NULL) {
+        if ((func = reinterpret_cast <T> (wglGetProcAddress(funcName.c_str()))) == NULL) {
+            oss << "Cannot initialize " << funcName << " function";
+            throw Exception(oss.str());
+        }
+    }
+}
+#endif
 
 #ifndef _WIN32
 int main(int argc, const char **argv)
@@ -918,6 +942,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     try {
         window = Window::Initialize();
         window->SetOnCloseCallback(CloseRequestHandler);
+
+#ifdef _WIN32
+        InitGLFunction(glBindBuffer, "glBindBuffer");
+        InitGLFunction(glBufferData, "glBufferData");
+        InitGLFunction(glDisableVertexAttribArray, "glDisableVertexAttribArray");
+        InitGLFunction(glEnableVertexAttribArray, "glEnableVertexAttribArray");
+        InitGLFunction(glGenBuffers, "glGenBuffers");
+        InitGLFunction(glGetAttribLocation, "glGetAttribLocation");
+        InitGLFunction(glGetUniformLocation, "glGetUniformLocation");
+        InitGLFunction(glUniformMatrix4fv, "glUniformMatrix4fv");
+        InitGLFunction(glUseProgram, "glUseProgram");
+        InitGLFunction(glVertexAttribPointer, "glVertexAttribPointer");
+#endif
 
         char vertexShaderCode[] =
             "attribute vec3 vertexPosition;                             \n"
