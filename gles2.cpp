@@ -531,6 +531,20 @@ void Window::SetOnCloseCallback(OnCloseCallback callback)
     onCloseCallback = callback;
 }
 
+#ifdef _WIN32
+template <typename T>
+void InitGLFunction(T &func, string funcName)
+{
+    ostringstream oss;
+    if (func == NULL) {
+        if ((func = reinterpret_cast <T> (wglGetProcAddress(funcName.c_str()))) == NULL) {
+            oss << "Cannot initialize " << funcName << " function";
+            throw Exception(oss.str());
+        }
+    }
+}
+#endif
+
 class ShaderProgram
 {
     public:
@@ -554,14 +568,9 @@ class ShaderProgram
         static PFNGLGETSHADERIVPROC glGetShaderiv;
         static PFNGLLINKPROGRAMPROC glLinkProgram;
         static PFNGLSHADERSOURCEPROC glShaderSource;
-
 #endif
 
         GLuint LoadShader(const char* shaderCode, GLenum shaderType);
-#ifdef _WIN32
-        template <typename T>
-        void InitFunction(T &func, string funcName);
-#endif
 };
 
 #ifdef _WIN32
@@ -583,12 +592,12 @@ ShaderProgram::ShaderProgram(const char* vertexShaderCode, const char* fragmentS
     GLint isLinked;
 
 #ifdef _WIN32
-    InitFunction(glAttachShader, "glAttachShader");
-    InitFunction(glCreateProgram, "glCreateProgram");
-    InitFunction(glDeleteProgram, "glDeleteProgram");
-    InitFunction(glDeleteShader, "glDeleteShader");
-    InitFunction(glGetProgramiv, "glGetProgramiv");
-    InitFunction(glLinkProgram, "glLinkProgram");
+    InitGLFunction(glAttachShader, "glAttachShader");
+    InitGLFunction(glCreateProgram, "glCreateProgram");
+    InitGLFunction(glDeleteProgram, "glDeleteProgram");
+    InitGLFunction(glDeleteShader, "glDeleteShader");
+    InitGLFunction(glGetProgramiv, "glGetProgramiv");
+    InitGLFunction(glLinkProgram, "glLinkProgram");
 #endif
 
     vertexShader = LoadShader(vertexShaderCode, GL_VERTEX_SHADER);
@@ -636,11 +645,11 @@ GLuint ShaderProgram::LoadShader(const char* shaderCode, GLenum shaderType)
     GLint isCompiled;
 
 #ifdef _WIN32
-    InitFunction(glCreateShader, "glCreateShader");
-    InitFunction(glCompileShader, "glCompileShader");
-    InitFunction(glGetShaderInfoLog, "glGetShaderInfoLog");
-    InitFunction(glGetShaderiv, "glGetShaderiv");
-    InitFunction(glShaderSource, "glShaderSource");
+    InitGLFunction(glCreateShader, "glCreateShader");
+    InitGLFunction(glCompileShader, "glCompileShader");
+    InitGLFunction(glGetShaderInfoLog, "glGetShaderInfoLog");
+    InitGLFunction(glGetShaderiv, "glGetShaderiv");
+    InitGLFunction(glShaderSource, "glShaderSource");
 #endif
 
     shader = glCreateShader(shaderType);
@@ -669,20 +678,6 @@ GLuint ShaderProgram::LoadShader(const char* shaderCode, GLenum shaderType)
     }
     return shader;
 }
-
-#ifdef _WIN32
-template <typename T>
-void ShaderProgram::InitFunction(T &func, string funcName)
-{
-    ostringstream oss;
-    if (func == NULL) {
-        if ((func = reinterpret_cast <T> (wglGetProcAddress(funcName.c_str()))) == NULL) {
-            oss << "Cannot initialize " << funcName << " function";
-            throw Exception(oss.str());
-        }
-    }
-}
-#endif
 
 class Matrix
 {
@@ -897,36 +892,24 @@ void Matrix::SetSize(GLuint width, GLuint height)
     delete [] oldData;
 }
 
-bool quit;
+bool quit = false;
 
 #ifdef _WIN32
-PFNGLBINDBUFFERPROC glBindBuffer;
-PFNGLBUFFERDATAPROC glBufferData;
-PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
-PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
-PFNGLGENBUFFERSPROC glGenBuffers;
-PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
-PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
-PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
-PFNGLUSEPROGRAMPROC glUseProgram;
-PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
+PFNGLBINDBUFFERPROC glBindBuffer = NULL;
+PFNGLBUFFERDATAPROC glBufferData = NULL;
+PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
+PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
+PFNGLGENBUFFERSPROC glGenBuffers = NULL;
+PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation = NULL;
+PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
+PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv = NULL;
+PFNGLUSEPROGRAMPROC glUseProgram = NULL;
+PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
 #endif
 
 void CloseRequestHandler() {
     quit = true;
 }
-
-#ifdef _WIN32
-template <typename T>
-void InitGLFunction(T &func, string funcName)
-{
-    ostringstream oss;
-    if ((func = reinterpret_cast <T> (wglGetProcAddress(funcName.c_str()))) == NULL) {
-        oss << "Cannot initialize " << funcName << " function";
-        throw Exception(oss.str());
-    }
-}
-#endif
 
 #ifndef _WIN32
 int main(int argc, const char **argv)
@@ -934,7 +917,6 @@ int main(int argc, const char **argv)
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 #endif
 {
-    quit = false;
     Window* window = NULL;
 
     try {
