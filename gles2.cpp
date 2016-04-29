@@ -921,11 +921,9 @@ template <typename T>
 void InitGLFunction(T &func, string funcName)
 {
     ostringstream oss;
-    if (func == NULL) {
-        if ((func = reinterpret_cast <T> (wglGetProcAddress(funcName.c_str()))) == NULL) {
-            oss << "Cannot initialize " << funcName << " function";
-            throw Exception(oss.str());
-        }
+    if ((func = reinterpret_cast <T> (wglGetProcAddress(funcName.c_str()))) == NULL) {
+        oss << "Cannot initialize " << funcName << " function";
+        throw Exception(oss.str());
     }
 }
 #endif
