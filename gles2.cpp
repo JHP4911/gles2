@@ -425,7 +425,7 @@ void __cdecl Window::EventLoop(void*)
 
     SDL_WM_SetCaption("SDL Window", "SDL Icon");
 
-    sdlScreen = SDL_SetVideoMode(clientWidth, clientHeight, 0, 0);
+    sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
     if (sdlScreen == NULL) {
         eventLoopInitError = true;
         SDL_Quit();
