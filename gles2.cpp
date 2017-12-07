@@ -3,6 +3,12 @@
 #include <unistd.h>
 #ifndef _WIN32
 #include <iostream>
+#ifdef USE_2ND_FRAMEBUFFER
+#include <fcntl.h>
+#include <linux/fb.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#endif
 #include <SDL.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -264,7 +270,7 @@ Window::Window()
         throw Exception("Cannot initialize secondary framebuffer memory mapping");
     }
 
-    vc_dispmanx_rect_set(&dispmanRect, 0, 0, vinfo.xres, vinfo.yres);
+    vc_dispmanx_rect_set(&dispmanRect, 0, 0, vInfo.xres, vInfo.yres);
 #endif
 
     dispmanElement = vc_dispmanx_element_add(dispmanUpdate, dispmanDisplay, 0, &dstRect, 0, &srcRect,
@@ -424,8 +430,8 @@ bool Window::SwapBuffers()
 #else
     bool swapResult = ::SwapBuffers(hDC);
 #endif
-    vc_dispmanx_snapshot(dispmanDisplay, dispmanResource, 0);
-    vc_dispmanx_resource_read_data(dispmanResource, dispmanRect, framebuffer, fbLineSize);
+    vc_dispmanx_snapshot(dispmanDisplay, dispmanResource, (DISPMANX_TRANSFORM_T)0);
+    vc_dispmanx_resource_read_data(dispmanResource, &dispmanRect, framebuffer, fbLineSize);
 
     return swapResult;
 }
