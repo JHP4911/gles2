@@ -75,20 +75,20 @@ class Window
         void SetOnCloseCallback(OnCloseCallback onCloseCallback);
     private:
 #ifndef _WIN32
-		DISPMANX_DISPLAY_HANDLE_T dispmanDisplay;
-		DISPMANX_UPDATE_HANDLE_T dispmanUpdate;
-		DISPMANX_ELEMENT_HANDLE_T dispmanElement;
+        DISPMANX_DISPLAY_HANDLE_T dispmanDisplay;
+        DISPMANX_UPDATE_HANDLE_T dispmanUpdate;
+        DISPMANX_ELEMENT_HANDLE_T dispmanElement;
         EGLDisplay eglDisplay;
         EGLContext eglContext;
         EGLSurface eglSurface;
 #ifdef USE_2ND_FRAMEBUFFER
-		DISPMANX_RESOURCE_HANDLE_T dispmanResource;
-		VC_RECT_T dispmanRect;
-		uint32_t fdMemSize;
-		uint8_t* framebuffer;
-		int fbFd;
+        DISPMANX_RESOURCE_HANDLE_T dispmanResource;
+        uint32_t fbMemSize, fbLineSize;
+        VC_RECT_T dispmanRect;
+        uint8_t* framebuffer;
+        int fbFd;
 #endif
-		static SDL_Surface* sdlScreen;
+        static SDL_Surface* sdlScreen;
         pthread_t eventLoopThread;
 #else
         static HWND hWnd;
@@ -221,49 +221,50 @@ Window::Window()
     dispmanUpdate = vc_dispmanx_update_start(0);
 
 #ifdef USE_2ND_FRAMEBUFFER
-	uint32_t image;
+    uint32_t image;
 
-	struct fb_var_screeninfo vInfo;
-	struct fb_fix_screeninfo fInfo;
+    struct fb_var_screeninfo vInfo;
+    struct fb_fix_screeninfo fInfo;
 
-	fbFd = open("/dev/fb1", O_RDWR);
-	if (fbFd < 0) {
-		eglDestroyContext(eglDisplay, eglContext);
-		vc_dispmanx_display_close(dispmanDisplay);
-		eglTerminate(eglDisplay);
-		throw Exception("Cannot open secondary framebuffer");
-	}
-	if (ioctl(fbFd, FBIOGET_FSCREENINFO, &fInfo) ||
-		ioctl(fbFd, FBIOGET_VSCREENINFO, &vInfo)) {
-		close(fbFd);
-		eglDestroyContext(eglDisplay, eglContext);
-		vc_dispmanx_display_close(dispmanDisplay);
-		eglTerminate(eglDisplay);
-		throw Exception("Cannot access secondary framebuffer information");
-	}
+    fbFd = open("/dev/fb1", O_RDWR);
+    if (fbFd < 0) {
+        eglDestroyContext(eglDisplay, eglContext);
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglTerminate(eglDisplay);
+        throw Exception("Cannot open secondary framebuffer");
+    }
+    if (ioctl(fbFd, FBIOGET_FSCREENINFO, &fInfo) ||
+        ioctl(fbFd, FBIOGET_VSCREENINFO, &vInfo)) {
+        close(fbFd);
+        eglDestroyContext(eglDisplay, eglContext);
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglTerminate(eglDisplay);
+        throw Exception("Cannot access secondary framebuffer information");
+    }
 
-	dispmanResource = vc_dispmanx_resource_create(VC_IMAGE_RGB565, vInfo.xres, vInfo.yres, &image);
-	if (!dispmanResource) {
-		close(fbFd);
-		eglDestroyContext(eglDisplay, eglContext);
-		vc_dispmanx_display_close(dispmanDisplay);
-		eglTerminate(eglDisplay);
-		throw Exception("Cannot initialize secondary display");
-	}
+    dispmanResource = vc_dispmanx_resource_create(VC_IMAGE_RGB565, vInfo.xres, vInfo.yres, &image);
+    if (!dispmanResource) {
+        close(fbFd);
+        eglDestroyContext(eglDisplay, eglContext);
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglTerminate(eglDisplay);
+        throw Exception("Cannot initialize secondary display");
+    }
 
-	fbMemSize = fInfo.smem_len;
+    fbMemSize = fInfo.smem_len;
+    fbLineSize = vInfo.xres * vInfo.bits_per_pixel >> 3;
 
-	framebuffer = (uint8_t*)mmap(0, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0);
-	if (framebuffer == MAP_FAILED) {
-		vc_dispmanx_resource_delete(dispmanResource);
-		close(fbFd);
-		eglDestroyContext(eglDisplay, eglContext);
-		vc_dispmanx_display_close(dispmanDisplay);
-		eglTerminate(eglDisplay);
-		throw Exception("Cannot initialize secondary framebuffer memory mapping");
-	}
+    framebuffer = (uint8_t*)mmap(0, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0);
+    if (framebuffer == MAP_FAILED) {
+        vc_dispmanx_resource_delete(dispmanResource);
+        close(fbFd);
+        eglDestroyContext(eglDisplay, eglContext);
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglTerminate(eglDisplay);
+        throw Exception("Cannot initialize secondary framebuffer memory mapping");
+    }
 
-	vc_dispmanx_rect_set(&dispmanRect, 0, 0, vinfo.xres, vinfo.yres);
+    vc_dispmanx_rect_set(&dispmanRect, 0, 0, vinfo.xres, vinfo.yres);
 #endif
 
     dispmanElement = vc_dispmanx_element_add(dispmanUpdate, dispmanDisplay, 0, &dstRect, 0, &srcRect,
@@ -277,13 +278,13 @@ Window::Window()
     eglSurface = eglCreateWindowSurface(eglDisplay, config, &nativeWindow, NULL);
     if (eglSurface == EGL_NO_SURFACE) {
 #ifdef USE_2ND_FRAMEBUFFER
-		munmap(framebuffer, fbMemSize);
-		vc_dispmanx_resource_delete(dispmanResource);
-		close(fbFd);
+        munmap(framebuffer, fbMemSize);
+        vc_dispmanx_resource_delete(dispmanResource);
+        close(fbFd);
 #endif
-		eglDestroyContext(eglDisplay, eglContext);
-		vc_dispmanx_display_close(dispmanDisplay);
-		eglTerminate(eglDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglTerminate(eglDisplay);
         EndEventLoop();
         throw Exception("Cannot create new EGL window surface");
     }
@@ -345,13 +346,13 @@ Window::Window()
     if (eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext) != EGL_TRUE) {
         eglDestroySurface(eglDisplay, eglSurface);
 #ifdef USE_2ND_FRAMEBUFFER
-		munmap(framebuffer, fbMemSize);
-		vc_dispmanx_resource_delete(dispmanResource);
-		close(fbFd);
+        munmap(framebuffer, fbMemSize);
+        vc_dispmanx_resource_delete(dispmanResource);
+        close(fbFd);
 #endif
-		eglDestroyContext(eglDisplay, eglContext);
-		vc_dispmanx_display_close(dispmanDisplay);
-		eglTerminate(eglDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglTerminate(eglDisplay);
         EndEventLoop();
         throw Exception("Cannot attach EGL rendering context to EGL surface");
     }
@@ -419,10 +420,14 @@ bool Window::SwapBuffers()
         return false;
     }
 #ifndef _WIN32
-    return eglSwapBuffers(eglDisplay, eglSurface) == EGL_TRUE;
+    bool swapResult = eglSwapBuffers(eglDisplay, eglSurface) == EGL_TRUE;
 #else
-    return ::SwapBuffers(hDC);
+    bool swapResult = ::SwapBuffers(hDC);
 #endif
+    vc_dispmanx_snapshot(dispmanDisplay, dispmanResource, 0);
+    vc_dispmanx_resource_read_data(dispmanResource, dispmanRect, framebuffer, fbLineSize);
+
+    return swapResult;
 }
 
 void Window::Terminate() {
@@ -431,13 +436,13 @@ void Window::Terminate() {
         eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         eglDestroySurface(eglDisplay, eglSurface);
 #ifdef USE_2ND_FRAMEBUFFER
-		munmap(framebuffer, fbMemSize);
-		vc_dispmanx_resource_delete(dispmanResource);
-		close(fbFd);
+        munmap(framebuffer, fbMemSize);
+        vc_dispmanx_resource_delete(dispmanResource);
+        close(fbFd);
 #endif
-		eglDestroyContext(eglDisplay, eglContext);
-		vc_dispmanx_display_close(dispmanDisplay);
-		eglTerminate(eglDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglTerminate(eglDisplay);
 #else
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
