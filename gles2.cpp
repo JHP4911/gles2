@@ -3,7 +3,7 @@
 #include <unistd.h>
 #ifndef _WIN32
 #include <iostream>
-#ifdef USE_2ND_FRAMEBUFFER
+#ifdef TFT_OUTPUT
 #include <fcntl.h>
 #include <linux/fb.h>
 #include <sys/ioctl.h>
@@ -87,7 +87,7 @@ class Window
         EGLDisplay eglDisplay;
         EGLContext eglContext;
         EGLSurface eglSurface;
-#ifdef USE_2ND_FRAMEBUFFER
+#ifdef TFT_OUTPUT
         DISPMANX_RESOURCE_HANDLE_T dispmanResource;
         uint32_t fbMemSize, fbLineSize;
         VC_RECT_T dispmanRect;
@@ -226,7 +226,7 @@ Window::Window()
     dispmanDisplay = vc_dispmanx_display_open(0);
     dispmanUpdate = vc_dispmanx_update_start(0);
 
-#ifdef USE_2ND_FRAMEBUFFER
+#ifdef TFT_OUTPUT
     uint32_t image;
 
     struct fb_var_screeninfo vInfo;
@@ -283,7 +283,7 @@ Window::Window()
 
     eglSurface = eglCreateWindowSurface(eglDisplay, config, &nativeWindow, NULL);
     if (eglSurface == EGL_NO_SURFACE) {
-#ifdef USE_2ND_FRAMEBUFFER
+#ifdef TFT_OUTPUT
         munmap(framebuffer, fbMemSize);
         vc_dispmanx_resource_delete(dispmanResource);
         close(fbFd);
@@ -351,7 +351,7 @@ Window::Window()
 #ifndef _WIN32
     if (eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext) != EGL_TRUE) {
         eglDestroySurface(eglDisplay, eglSurface);
-#ifdef USE_2ND_FRAMEBUFFER
+#ifdef TFT_OUTPUT
         munmap(framebuffer, fbMemSize);
         vc_dispmanx_resource_delete(dispmanResource);
         close(fbFd);
@@ -427,13 +427,14 @@ bool Window::SwapBuffers()
     }
 #ifndef _WIN32
     bool swapResult = eglSwapBuffers(eglDisplay, eglSurface) == EGL_TRUE;
-#else
-    bool swapResult = ::SwapBuffers(hDC);
-#endif
+#ifdef TFT_OUTPUT
     vc_dispmanx_snapshot(dispmanDisplay, dispmanResource, (DISPMANX_TRANSFORM_T)0);
     vc_dispmanx_resource_read_data(dispmanResource, &dispmanRect, framebuffer, fbLineSize);
-
+#endif
     return swapResult;
+#else
+    return ::SwapBuffers(hDC);
+#endif
 }
 
 void Window::Terminate() {
@@ -441,7 +442,7 @@ void Window::Terminate() {
 #ifndef _WIN32
         eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         eglDestroySurface(eglDisplay, eglSurface);
-#ifdef USE_2ND_FRAMEBUFFER
+#ifdef TFT_OUTPUT
         munmap(framebuffer, fbMemSize);
         vc_dispmanx_resource_delete(dispmanResource);
         close(fbFd);
