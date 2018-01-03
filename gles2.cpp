@@ -15,9 +15,7 @@
 #include <GLES2/gl2.h>
 #include <bcm_host.h>
 #else
-#include <string>
 #include <sstream>
-#include <process.h>
 #include <windows.h>
 #include "GL/gl.h"
 #include "GL/wglext.h"
