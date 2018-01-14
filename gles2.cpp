@@ -1,6 +1,8 @@
 #include <exception>
 #include <cmath>
+#if defined(_WIN32) && !defined(_VISUAL_CPP)
 #include <unistd.h>
+#endif
 #ifndef _WIN32
 #include <iostream>
 #ifdef TFT_OUTPUT
@@ -16,6 +18,9 @@
 #include <bcm_host.h>
 #else
 #include <sstream>
+#ifdef _VISUAL_CPP
+#include <process.h>
+#endif
 #include <windows.h>
 #include "GL/gl.h"
 #include "GL/wglext.h"
@@ -31,11 +36,25 @@ using std::ostringstream;
 #endif
 using std::string;
 using std::exception;
+#if defined(_WIN32) && !defined(_VISUAL_CPP)
 using std::min;
+#endif
 
 #define ROTATION_AXIS_X 0
 #define ROTATION_AXIS_Y 1
 #define ROTATION_AXIS_Z 2
+
+#if defined(_WIN32) && defined(_VISUAL_CPP)
+void usleep(uint32_t uSec)
+{
+    LARGE_INTEGER ft;
+    ft.QuadPart = -(10 * (int64_t)uSec);
+    HANDLE timer = CreateWaitableTimer(NULL, TRUE, NULL);
+    SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
+    WaitForSingleObject(timer, INFINITE);
+    CloseHandle(timer);
+}
+#endif
 
 class Exception : public exception
 {
@@ -1098,7 +1117,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
             window->SwapBuffers();
 
-            angle += 1.0f;
+            angle += 0.1f;
             usleep(1);
         }
 
