@@ -1,6 +1,6 @@
 #include <exception>
 #include <cmath>
-#if defined(_WIN32) && !defined(_VISUAL_CPP)
+#if defined(_WIN32) && !defined(_MSC_VER)
 #include <unistd.h>
 #endif
 #ifndef _WIN32
@@ -18,7 +18,7 @@
 #include <bcm_host.h>
 #else
 #include <sstream>
-#ifdef _VISUAL_CPP
+#ifdef _MSC_VER
 #include <process.h>
 #endif
 #include <windows.h>
@@ -36,7 +36,7 @@ using std::ostringstream;
 #endif
 using std::string;
 using std::exception;
-#if defined(_WIN32) && !defined(_VISUAL_CPP)
+#if defined(_WIN32) && !defined(_MSC_VER)
 using std::min;
 #endif
 
@@ -44,7 +44,7 @@ using std::min;
 #define ROTATION_AXIS_Y 1
 #define ROTATION_AXIS_Z 2
 
-#if defined(_WIN32) && defined(_VISUAL_CPP)
+#if defined(_WIN32) && defined(_MSC_VER)
 void usleep(uint32_t uSec)
 {
     LARGE_INTEGER ft;
