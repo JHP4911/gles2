@@ -1,4 +1,5 @@
 #include <exception>
+#include <fstream>
 #include <cmath>
 #if defined(_WIN32) && !defined(_MSC_VER)
 #include <unistd.h>
@@ -34,6 +35,8 @@ using std::endl;
 #else
 using std::ostringstream;
 #endif
+using std::ios;
+using std::ifstream;
 using std::string;
 using std::exception;
 #if defined(_WIN32) && !defined(_MSC_VER)
@@ -686,7 +689,7 @@ PFNGLLINKPROGRAMPROC ShaderProgram::glLinkProgram = NULL;
 PFNGLSHADERSOURCEPROC ShaderProgram::glShaderSource = NULL;
 #endif
 
-ShaderProgram::ShaderProgram(const char* vertexShaderCode, const char* fragmentShaderCode)
+ShaderProgram::ShaderProgram(const char* vertexShaderSrc, const char* fragmentShaderSrc)
 {
     GLint isLinked;
 
@@ -699,11 +702,11 @@ ShaderProgram::ShaderProgram(const char* vertexShaderCode, const char* fragmentS
     InitGLFunction(glLinkProgram, "glLinkProgram");
 #endif
 
-    vertexShader = LoadShader(vertexShaderCode, GL_VERTEX_SHADER);
+    vertexShader = LoadShader(vertexShaderSrc, GL_VERTEX_SHADER);
     if (vertexShader == 0) {
         throw Exception("Cannot load vertex shader");
     }
-    fragmentShader = LoadShader(fragmentShaderCode, GL_FRAGMENT_SHADER);
+    fragmentShader = LoadShader(fragmentShaderSrc, GL_FRAGMENT_SHADER);
     if (fragmentShader == 0) {
         glDeleteShader(vertexShader);
         throw Exception("Cannot load fragment shader");
@@ -738,10 +741,22 @@ GLuint ShaderProgram::GetProgram()
     return program;
 }
 
-GLuint ShaderProgram::LoadShader(const char* shaderCode, GLenum shaderType)
+GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum shaderType)
 {
     GLuint shader;
     GLint isCompiled;
+    char* code;
+
+    ifstream file(shaderSrc);
+    if (!file.is_open()) {
+        return 0;
+    }
+    file.seekg(0, ios::end);
+    GLint length = (GLint)file.tellg();
+    file.seekg(0, ios::beg);
+    code = new char[length];
+    file.read(code, length);
+    file.close();
 
 #ifdef _WIN32
     InitGLFunction(glCreateShader, "glCreateShader");
@@ -754,7 +769,7 @@ GLuint ShaderProgram::LoadShader(const char* shaderCode, GLenum shaderType)
     shader = glCreateShader(shaderType);
     if (shader == 0)
         return 0;
-    glShaderSource(shader, 1, &shaderCode, NULL);
+    glShaderSource(shader, 1, &code, &length);
     glCompileShader(shader);
     glGetShaderiv(shader, GL_COMPILE_STATUS, &isCompiled);
     if (!isCompiled) {
@@ -1035,31 +1050,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         InitGLFunction(glVertexAttribPointer, "glVertexAttribPointer");
 #endif
 
-        char vertexShaderCode[] =
-            "attribute vec3 vertexPosition;                             \n"
-            "attribute vec3 vertexColor;                                \n"
-            "varying vec3 fragmentColor;                                \n"
-            "uniform mat4 rotationMatrix;                               \n"
-            "                                                           \n"
-            "void main()                                                \n"
-            "{                                                          \n"
-            "   gl_Position = rotationMatrix * vec4(vertexPosition, 1); \n"
-            "   fragmentColor = vertexColor;                            \n"
-            "}                                                          \n";
-
-        char fragmentShaderCode[] =
-#ifndef _WIN32
-            "precision mediump float;                                   \n"
+        ShaderProgram program(
+            "Shaders/gl2.vert",
+#ifdef _WIN32
+            "Shaders/gl2.frag"
+#else
+            "Shaders/gles2.frag"
 #endif
-            "varying vec3 fragmentColor;                                \n"
-            "                                                           \n"
-            "void main()                                                \n"
-            "{                                                          \n"
-            "   gl_FragColor = vec4(fragmentColor, 1);                  \n"
-            "}                                                          \n";
-
-        ShaderProgram program(vertexShaderCode, fragmentShaderCode);
-
+        );
         GLuint vertPositionAttribute = glGetAttribLocation(program.GetProgram(), "vertexPosition");
         GLuint vertColorAttribute = glGetAttribLocation(program.GetProgram(), "vertexColor");
         GLuint rotMatrixUniform = glGetUniformLocation(program.GetProgram(), "rotationMatrix");
@@ -1117,8 +1115,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
             window->SwapBuffers();
 
-            angle += 0.1f;
-            usleep(1);
+            angle += 1.0f;
+            usleep(10);
         }
 
         window->Terminate();
