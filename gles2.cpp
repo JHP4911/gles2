@@ -47,6 +47,9 @@ using std::min;
 #define ROTATION_AXIS_Y 1
 #define ROTATION_AXIS_Z 2
 
+#define GL_SHADER_CODE_FROM_FILE 1
+#define GL_SHADER_CODE_FROM_STRING 0
+
 #if defined(_WIN32) && defined(_MSC_VER)
 void usleep(uint32_t uSec)
 {
@@ -650,7 +653,7 @@ void InitGLFunction(T &func, string funcName)
 class ShaderProgram
 {
     public:
-        ShaderProgram(const char* vertexShaderCode, const char* fragmentShaderCode);
+        ShaderProgram(const char* vertexShaderSrc, const char* fragmentShaderSrc, GLenum srcType);
         ~ShaderProgram();
 
         GLuint GetProgram();
@@ -672,7 +675,7 @@ class ShaderProgram
         static PFNGLSHADERSOURCEPROC glShaderSource;
 #endif
 
-        GLuint LoadShader(const char* shaderCode, GLenum shaderType);
+        GLuint LoadShader(const char* shaderSrc, GLenum srcType, GLenum shaderType);
 };
 
 #ifdef _WIN32
@@ -689,7 +692,7 @@ PFNGLLINKPROGRAMPROC ShaderProgram::glLinkProgram = NULL;
 PFNGLSHADERSOURCEPROC ShaderProgram::glShaderSource = NULL;
 #endif
 
-ShaderProgram::ShaderProgram(const char* vertexShaderSrc, const char* fragmentShaderSrc)
+ShaderProgram::ShaderProgram(const char* vertexShaderSrc, const char* fragmentShaderSrc, GLenum srcType)
 {
     GLint isLinked;
 
@@ -702,11 +705,11 @@ ShaderProgram::ShaderProgram(const char* vertexShaderSrc, const char* fragmentSh
     InitGLFunction(glLinkProgram, "glLinkProgram");
 #endif
 
-    vertexShader = LoadShader(vertexShaderSrc, GL_VERTEX_SHADER);
+    vertexShader = LoadShader(vertexShaderSrc, srcType, GL_VERTEX_SHADER);
     if (vertexShader == 0) {
         throw Exception("Cannot load vertex shader");
     }
-    fragmentShader = LoadShader(fragmentShaderSrc, GL_FRAGMENT_SHADER);
+    fragmentShader = LoadShader(fragmentShaderSrc, srcType, GL_FRAGMENT_SHADER);
     if (fragmentShader == 0) {
         glDeleteShader(vertexShader);
         throw Exception("Cannot load fragment shader");
@@ -741,22 +744,33 @@ GLuint ShaderProgram::GetProgram()
     return program;
 }
 
-GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum shaderType)
+GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum srcType, GLenum shaderType)
 {
     GLuint shader;
-    GLint isCompiled;
+    GLint isCompiled, length;
     char* code;
 
-    ifstream file(shaderSrc);
-    if (!file.is_open()) {
-        return 0;
+    ifstream file;
+    switch (srcType) {
+        case GL_SHADER_CODE_FROM_FILE:
+            file.open(shaderSrc);
+            if (!file.is_open()) {
+                return 0;
+            }
+            file.seekg(0, ios::end);
+            length = (GLint)file.tellg();
+            file.seekg(0, ios::beg);
+            code = new char[length];
+            file.read(code, length);
+            file.close();
+            break;
+        case GL_SHADER_CODE_FROM_STRING:
+            code = (char*)shaderSrc;
+            length = strlen(code);
+            break;
+        default:
+            throw Exception("Cannot load shader code, unknown source type");
     }
-    file.seekg(0, ios::end);
-    GLint length = (GLint)file.tellg();
-    file.seekg(0, ios::beg);
-    code = new char[length];
-    file.read(code, length);
-    file.close();
 
 #ifdef _WIN32
     InitGLFunction(glCreateShader, "glCreateShader");
@@ -1053,10 +1067,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         ShaderProgram program(
             "Shaders/gl2.vert",
 #ifdef _WIN32
-            "Shaders/gl2.frag"
+            "Shaders/gl2.frag",
 #else
-            "Shaders/gles2.frag"
+            "Shaders/gles2.frag",
 #endif
+            GL_SHADER_CODE_FROM_FILE
         );
         GLuint vertPositionAttribute = glGetAttribLocation(program.GetProgram(), "vertexPosition");
         GLuint vertColorAttribute = glGetAttribLocation(program.GetProgram(), "vertexColor");
