@@ -1,4 +1,3 @@
-#include <exception>
 #include <fstream>
 #include <cmath>
 #ifndef _WIN32
