@@ -1064,15 +1064,30 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         InitGLFunction(glVertexAttribPointer, "glVertexAttribPointer");
 #endif
 
-        ShaderProgram program(
-            "Shaders/gl2.vert",
-#ifdef _WIN32
-            "Shaders/gl2.frag",
-#else
-            "Shaders/gles2.frag",
+        char vertexShaderCode[] =
+            "attribute vec3 vertexPosition;                             \n"
+            "attribute vec3 vertexColor;                                \n"
+            "varying vec3 fragmentColor;                                \n"
+            "uniform mat4 rotationMatrix;                               \n"
+            "                                                           \n"
+            "void main()                                                \n"
+            "{                                                          \n"
+            "   gl_Position = rotationMatrix * vec4(vertexPosition, 1); \n"
+            "   fragmentColor = vertexColor;                            \n"
+            "}                                                          \n";
+
+        char fragmentShaderCode[] =
+#ifndef _WIN32
+            "precision mediump float;                                   \n"
 #endif
-            GL_SHADER_CODE_FROM_FILE
-        );
+            "varying vec3 fragmentColor;                                \n"
+            "                                                           \n"
+            "void main()                                                \n"
+            "{                                                          \n"
+            "   gl_FragColor = vec4(fragmentColor, 1);                  \n"
+            "}                                                          \n";
+
+        ShaderProgram program(vertexShaderCode, fragmentShaderCode, GL_SHADER_CODE_FROM_STRING);
         GLuint vertPositionAttribute = glGetAttribLocation(program.GetProgram(), "vertexPosition");
         GLuint vertColorAttribute = glGetAttribLocation(program.GetProgram(), "vertexColor");
         GLuint rotMatrixUniform = glGetUniformLocation(program.GetProgram(), "rotationMatrix");
