@@ -1,9 +1,6 @@
 #include <exception>
 #include <fstream>
 #include <cmath>
-#if defined(_WIN32) && !defined(_MSC_VER)
-#include <unistd.h>
-#endif
 #ifndef _WIN32
 #include <iostream>
 #ifdef TFT_OUTPUT
@@ -26,6 +23,7 @@
 #include "GL/gl.h"
 #include "GL/wglext.h"
 #include "GL3/gl3.h"
+#include <unistd.h>
 #endif
 
 #ifndef _WIN32
@@ -39,7 +37,7 @@ using std::ios;
 using std::ifstream;
 using std::string;
 using std::exception;
-#if defined(_WIN32) && !defined(_MSC_VER)
+#ifndef _MSC_VER
 using std::min;
 #endif
 
@@ -748,7 +746,7 @@ GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum srcType, GLenum s
 {
     GLuint shader;
     GLint isCompiled, length;
-    char* code;
+    GLchar* code;
 
     ifstream file;
     switch (srcType) {
@@ -760,12 +758,12 @@ GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum srcType, GLenum s
             file.seekg(0, ios::end);
             length = (GLint)file.tellg();
             file.seekg(0, ios::beg);
-            code = new char[length];
+            code = new GLchar[length];
             file.read(code, length);
             file.close();
             break;
         case GL_SHADER_CODE_FROM_STRING:
-            code = (char*)shaderSrc;
+            code = (GLchar*)shaderSrc;
             length = strlen(code);
             break;
         default:
@@ -783,7 +781,7 @@ GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum srcType, GLenum s
     shader = glCreateShader(shaderType);
     if (shader == 0)
         return 0;
-    glShaderSource(shader, 1, &code, &length);
+    glShaderSource(shader, 1, (const GLchar* const*)&code, &length);
     glCompileShader(shader);
     glGetShaderiv(shader, GL_COMPILE_STATUS, &isCompiled);
     if (!isCompiled) {
@@ -1145,8 +1143,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
             window->SwapBuffers();
 
-            angle += 1.0f;
-            usleep(10);
+            angle += 0.1f;
+            usleep(1000);
         }
 
         window->Terminate();
