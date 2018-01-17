@@ -22,7 +22,9 @@
 #include "GL/gl.h"
 #include "GL/wglext.h"
 #include "GL3/gl3.h"
+#ifndef _MSC_VER
 #include <unistd.h>
+#endif
 #endif
 
 #ifndef _WIN32
