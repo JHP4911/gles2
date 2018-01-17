@@ -22,9 +22,6 @@
 #include "GL/gl.h"
 #include "GL/wglext.h"
 #include "GL3/gl3.h"
-#ifndef _MSC_VER
-#include <unistd.h>
-#endif
 #endif
 
 #ifndef _WIN32
@@ -49,7 +46,7 @@ using std::min;
 #define GL_SHADER_CODE_FROM_FILE 1
 #define GL_SHADER_CODE_FROM_STRING 0
 
-#if defined(_WIN32) && defined(_MSC_VER)
+#ifdef _WIN32
 void usleep(uint32_t uSec)
 {
     LARGE_INTEGER ft;
