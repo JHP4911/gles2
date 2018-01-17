@@ -781,7 +781,7 @@ GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum srcType, GLenum s
     shader = glCreateShader(shaderType);
     if (shader == 0)
         return 0;
-    glShaderSource(shader, 1, (const GLchar* const*)&code, &length);
+    glShaderSource(shader, 1, (const GLchar**)&code, &length);
     glCompileShader(shader);
     glGetShaderiv(shader, GL_COMPILE_STATUS, &isCompiled);
     if (!isCompiled) {
