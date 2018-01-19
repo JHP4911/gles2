@@ -2,6 +2,7 @@
 #include <cmath>
 #ifndef _WIN32
 #include <iostream>
+//#include <csignal>
 #ifdef TFT_OUTPUT
 #include <fcntl.h>
 #include <linux/fb.h>
@@ -1018,7 +1019,13 @@ void Matrix::SetSize(GLuint width, GLuint height)
 
 bool quit = false;
 
-#ifdef _WIN32
+#ifndef _WIN32
+void signalHandler(int sigNum) {
+    if (sigNum == SIGINT) {
+        quit = true;
+    }
+}
+#else
 PFNGLBINDBUFFERPROC glBindBuffer = NULL;
 PFNGLBUFFERDATAPROC glBufferData = NULL;
 PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
@@ -1031,7 +1038,7 @@ PFNGLUSEPROGRAMPROC glUseProgram = NULL;
 PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
 #endif
 
-void CloseRequestHandler() {
+void closeRequestHandler() {
     quit = true;
 }
 
@@ -1042,10 +1049,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #endif
 {
     Window* window = NULL;
+#ifndef _WIN32
+    signal(SIGINT, signalHandler);
+#endif
 
     try {
         window = Window::Initialize();
-        window->SetOnCloseCallback(CloseRequestHandler);
+        window->SetOnCloseCallback(closeRequestHandler);
 
 #ifdef _WIN32
         InitGLFunction(glBindBuffer, "glBindBuffer");
@@ -1073,9 +1083,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             "}                                                          \n";
 
         char fragmentShaderCode[] =
-#ifndef _WIN32
-            "precision mediump float;                                   \n"
-#endif
             "varying vec3 fragmentColor;                                \n"
             "                                                           \n"
             "void main()                                                \n"
