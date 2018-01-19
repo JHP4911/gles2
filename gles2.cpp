@@ -2,7 +2,6 @@
 #include <cmath>
 #ifndef _WIN32
 #include <iostream>
-//#include <csignal>
 #ifdef TFT_OUTPUT
 #include <fcntl.h>
 #include <linux/fb.h>
