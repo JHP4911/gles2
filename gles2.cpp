@@ -634,7 +634,7 @@ void Window::SetOnCloseCallback(OnCloseCallback callback)
 
 #ifdef _WIN32
 template <typename T>
-void InitGLFunction(T &func, string funcName)
+void initGLFunction(T &func, string funcName)
 {
     ostringstream oss;
     if (func == NULL) {
@@ -693,12 +693,12 @@ ShaderProgram::ShaderProgram(const char* vertexShaderSrc, const char* fragmentSh
     GLint isLinked;
 
 #ifdef _WIN32
-    InitGLFunction(glAttachShader, "glAttachShader");
-    InitGLFunction(glCreateProgram, "glCreateProgram");
-    InitGLFunction(glDeleteProgram, "glDeleteProgram");
-    InitGLFunction(glDeleteShader, "glDeleteShader");
-    InitGLFunction(glGetProgramiv, "glGetProgramiv");
-    InitGLFunction(glLinkProgram, "glLinkProgram");
+    initGLFunction(glAttachShader, "glAttachShader");
+    initGLFunction(glCreateProgram, "glCreateProgram");
+    initGLFunction(glDeleteProgram, "glDeleteProgram");
+    initGLFunction(glDeleteShader, "glDeleteShader");
+    initGLFunction(glGetProgramiv, "glGetProgramiv");
+    initGLFunction(glLinkProgram, "glLinkProgram");
 #endif
 
     vertexShader = LoadShader(vertexShaderSrc, srcType, GL_VERTEX_SHADER);
@@ -769,11 +769,11 @@ GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum srcType, GLenum s
     }
 
 #ifdef _WIN32
-    InitGLFunction(glCreateShader, "glCreateShader");
-    InitGLFunction(glCompileShader, "glCompileShader");
-    InitGLFunction(glGetShaderInfoLog, "glGetShaderInfoLog");
-    InitGLFunction(glGetShaderiv, "glGetShaderiv");
-    InitGLFunction(glShaderSource, "glShaderSource");
+    initGLFunction(glCreateShader, "glCreateShader");
+    initGLFunction(glCompileShader, "glCompileShader");
+    initGLFunction(glGetShaderInfoLog, "glGetShaderInfoLog");
+    initGLFunction(glGetShaderiv, "glGetShaderiv");
+    initGLFunction(glShaderSource, "glShaderSource");
 #endif
 
     shader = glCreateShader(shaderType);
@@ -1057,16 +1057,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         window->SetOnCloseCallback(closeRequestHandler);
 
 #ifdef _WIN32
-        InitGLFunction(glBindBuffer, "glBindBuffer");
-        InitGLFunction(glBufferData, "glBufferData");
-        InitGLFunction(glDisableVertexAttribArray, "glDisableVertexAttribArray");
-        InitGLFunction(glEnableVertexAttribArray, "glEnableVertexAttribArray");
-        InitGLFunction(glGenBuffers, "glGenBuffers");
-        InitGLFunction(glGetAttribLocation, "glGetAttribLocation");
-        InitGLFunction(glGetUniformLocation, "glGetUniformLocation");
-        InitGLFunction(glUniformMatrix4fv, "glUniformMatrix4fv");
-        InitGLFunction(glUseProgram, "glUseProgram");
-        InitGLFunction(glVertexAttribPointer, "glVertexAttribPointer");
+        initGLFunction(glBindBuffer, "glBindBuffer");
+        initGLFunction(glBufferData, "glBufferData");
+        initGLFunction(glDisableVertexAttribArray, "glDisableVertexAttribArray");
+        initGLFunction(glEnableVertexAttribArray, "glEnableVertexAttribArray");
+        initGLFunction(glGenBuffers, "glGenBuffers");
+        initGLFunction(glGetAttribLocation, "glGetAttribLocation");
+        initGLFunction(glGetUniformLocation, "glGetUniformLocation");
+        initGLFunction(glUniformMatrix4fv, "glUniformMatrix4fv");
+        initGLFunction(glUseProgram, "glUseProgram");
+        initGLFunction(glVertexAttribPointer, "glVertexAttribPointer");
 #endif
 
         char vertexShaderCode[] =
