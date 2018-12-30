@@ -46,6 +46,9 @@ using std::min;
 #define GL_SHADER_CODE_FROM_FILE 1
 #define GL_SHADER_CODE_FROM_STRING 0
 
+#define EVENT_LOOP_INIT_RESULT_SUCCESS 1
+#define EVENT_LOOP_INIT_RESULT_FAILURE 2
+
 #ifdef _WIN32
 void usleep(uint32_t uSec)
 {
@@ -88,11 +91,10 @@ class Window
     public:
         typedef void(*OnCloseCallback)();
 #ifdef _WIN32
-        static int exitCode;
+        static int32_t exitCode;
 #endif
 
         virtual ~Window();
-
         static Window* Initialize();
         bool SwapBuffers();
         void Terminate();
@@ -113,7 +115,6 @@ class Window
         uint8_t* framebuffer;
         int fbFd;
 #endif
-        static SDL_Surface* sdlScreen;
         pthread_t eventLoopThread;
 #else
         static HWND hWnd;
@@ -121,37 +122,32 @@ class Window
         HGLRC hRC;
         HDC hDC;
 #endif
-        static bool eventLoopInitError, eventLoop;
-        static uint32_t clientWidth, clientHeight;
         static OnCloseCallback onCloseCallback;
+        static uint32_t clientWidth, clientHeight;
+        static bool eventLoop;
         bool isTerminated;
 
         Window();
         void EndEventLoop();
 #ifndef _WIN32
-        static void* EventLoop(void*);
+        static void* EventLoop(void* eventLoopInitResult);
 #else
         static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-        static void __cdecl EventLoop(void*);
+        static void __cdecl EventLoop(void* eventLoopInitResult);
 #endif
 };
 
-#ifndef _WIN32
-SDL_Surface* Window::sdlScreen = NULL;
-#else
-int Window::exitCode = 0;
+#ifdef _WIN32
+int32_t Window::exitCode = 0;
 HWND Window::hWnd = NULL;
 #endif
 bool Window::eventLoop = true;
-bool Window::eventLoopInitError = false;
 uint32_t Window::clientWidth = 0;
 uint32_t Window::clientHeight = 0;
 Window::OnCloseCallback Window::onCloseCallback = NULL;
 
-Window::Window()
+Window::Window() : isTerminated(false)
 {
-    isTerminated = false;
-
 #ifndef _WIN32
     bcm_host_init();
 
@@ -166,6 +162,8 @@ Window::Window()
     GLuint pixelFormat;
     PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
 #endif
+
+    uint32_t eventLoopInitResult = 0;
 
 #ifndef _WIN32
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -216,17 +214,16 @@ Window::Window()
         throw Exception("Cannot obtain screen resolution");
     }
 
-    eventLoopInitError = false;
-    int returnCode = pthread_create(&eventLoopThread, NULL, &Window::EventLoop, NULL);
+    int returnCode = pthread_create(&eventLoopThread, NULL, &Window::EventLoop, (void*)&eventLoopInitResult);
     if (returnCode) {
         eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
         throw Exception("Cannot create event loop thread");
     }
-    while ((sdlScreen == NULL) && !eventLoopInitError) {
+    while (!eventLoopInitResult) {
         usleep(1);
     }
-    if (eventLoopInitError) {
+    if (eventLoopInitResult != EVENT_LOOP_INIT_RESULT_SUCCESS) {
         eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
         throw Exception("Cannot create SDL window");
@@ -322,12 +319,11 @@ Window::Window()
     clientHeight = GetSystemMetrics(SM_CYSCREEN);
 #endif
 
-    eventLoopInitError = false;
-    eventLoopThread = (HANDLE)_beginthread(EventLoop, 0, NULL);
-    while ((hWnd == NULL) && !eventLoopInitError) {
+    eventLoopThread = (HANDLE)_beginthread(EventLoop, 0, (void*)&eventLoopInitResult);
+    while (!eventLoopInitResult) {
         usleep(1);
     }
-    if (eventLoopInitError) {
+    if (eventLoopInitResult != EVENT_LOOP_INIT_RESULT_SUCCESS) {
         throw Exception("Cannot create OpenGL window");
     }
 
@@ -509,26 +505,24 @@ LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 #endif
 
 #ifndef _WIN32
-void* Window::EventLoop(void*)
+void* Window::EventLoop(void* eventLoopInitResult)
 #else
-void __cdecl Window::EventLoop(void*)
+void __cdecl Window::EventLoop(void* eventLoopInitResult)
 #endif
 {
-    eventLoopInitError = false;
-
 #ifndef _WIN32
     SDL_Event event;
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        eventLoopInitError = true;
+        *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
         return NULL;
     }
 
     SDL_WM_SetCaption("SDL Window", "SDL Icon");
 
-    sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
+    SDL_Surface* sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
     if (sdlScreen == NULL) {
-        eventLoopInitError = true;
+        *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
         SDL_Quit();
         return NULL;
     }
@@ -552,7 +546,7 @@ void __cdecl Window::EventLoop(void*)
     wcex.hIconSm = LoadIcon(NULL, IDI_APPLICATION);;
 
     if (!RegisterClassEx(&wcex)) {
-	    eventLoopInitError = true;
+        *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
         _endthread();
     }
 
@@ -565,7 +559,7 @@ void __cdecl Window::EventLoop(void*)
     clientArea.bottom = (long)clientHeight;
 
     if(!AdjustWindowRectEx(&clientArea, style, false, exStyle)) {
-	    eventLoopInitError = true;
+        *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
         _endthread();
     }
 
@@ -578,12 +572,14 @@ void __cdecl Window::EventLoop(void*)
 #endif
 
 	if (hWnd == NULL) {
-	    eventLoopInitError = true;
+        *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
         _endthread();
 	}
 
     ShowWindow(hWnd, SW_SHOW);
 #endif
+
+    *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_SUCCESS;
 
 #ifndef _WIN32
     while (eventLoop) {
@@ -596,7 +592,7 @@ void __cdecl Window::EventLoop(void*)
     while (true) {
         if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
-                exitCode = msg.wParam;
+                exitCode = (int32_t)msg.wParam;
                 break;
             } else {
                 TranslateMessage(&msg);
@@ -762,7 +758,7 @@ GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum srcType, GLenum s
             break;
         case GL_SHADER_CODE_FROM_STRING:
             code = (GLchar*)shaderSrc;
-            length = strlen(code);
+            length = (GLint)strlen(code);
             break;
         default:
             throw Exception("Cannot load shader code, unknown source type");
@@ -807,6 +803,7 @@ class Matrix
 {
     public:
         Matrix();
+        Matrix(const Matrix &source);
         Matrix(GLuint width, GLuint height);
         Matrix(GLuint width, GLuint height, GLfloat* matrixData);
         ~Matrix();
@@ -819,12 +816,12 @@ class Matrix
         Matrix operator +(const Matrix &matrix);
         Matrix operator -(const Matrix &matrix);
         Matrix operator *(const Matrix &matrix);
-        Matrix & operator =(const Matrix &matrix);
-        Matrix & operator =(const GLfloat* matrixData);
+        Matrix & operator =(const Matrix &source);
+        Matrix & operator =(const GLfloat* sourceData);
 
-        static Matrix & GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane);
-        static Matrix & GenerateTranslation(GLfloat x, GLfloat y, GLfloat z);
-        static Matrix & GenerateRotation(GLfloat angle, GLuint axis);
+        static Matrix GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane);
+        static Matrix GenerateTranslation(GLfloat x, GLfloat y, GLfloat z);
+        static Matrix GenerateRotation(GLfloat angle, GLuint axis);
     private:
         GLfloat* data;
         GLuint width;
@@ -836,6 +833,13 @@ Matrix::Matrix() :
 {
     data = new GLfloat[4 * 4];
     memset(data, 0, sizeof(GLfloat) * 4 * 4);
+}
+
+Matrix::Matrix(const Matrix &source) :
+    width(source.width), height(source.height)
+{
+    data = new GLfloat[width * height];
+    memcpy(data, source.data, sizeof(GLfloat) * width * height);
 }
 
 Matrix::Matrix(GLuint width, GLuint height) :
@@ -863,10 +867,10 @@ Matrix::~Matrix()
     delete [] data;
 }
 
-Matrix & Matrix::GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane)
+Matrix Matrix::GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane)
 {
-    Matrix* result = new Matrix(4, 4);
-    GLfloat* data = result->GetData();
+    Matrix result(4, 4);
+    GLfloat* data = result.GetData();
 
     data[0] = 2.0f * nearPane / width;
     data[5] = 2.0f * nearPane / height;
@@ -874,13 +878,13 @@ Matrix & Matrix::GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearP
     data[11] = -1.0f;
     data[14] = -2.0f * farPane * nearPane / (farPane - nearPane);
 
-    return *result;
+    return result;
 }
 
-Matrix & Matrix::GenerateTranslation(GLfloat x, GLfloat y, GLfloat z)
+Matrix Matrix::GenerateTranslation(GLfloat x, GLfloat y, GLfloat z)
 {
-    Matrix* result = new Matrix(4, 4);
-    GLfloat* data = result->GetData();
+    Matrix result(4, 4);
+    GLfloat* data = result.GetData();
 
     for (GLuint i = 0; i < 4; i++) {
         data[i + i * 4] = 1.0f;
@@ -889,13 +893,13 @@ Matrix & Matrix::GenerateTranslation(GLfloat x, GLfloat y, GLfloat z)
     data[13] = y;
     data[14] = z;
 
-    return *result;
+    return result;
 }
 
-Matrix & Matrix::GenerateRotation(GLfloat angle, GLuint axis)
+Matrix Matrix::GenerateRotation(GLfloat angle, GLuint axis)
 {
-    Matrix* result = new Matrix(4, 4);
-    GLfloat* data = result->GetData();
+    Matrix result(4, 4);
+    GLfloat* data = result.GetData();
 
     data[15] = 1.0f;
     GLfloat sinAngle = (GLfloat)sin(angle * M_PI / 180.0f);
@@ -923,7 +927,7 @@ Matrix & Matrix::GenerateRotation(GLfloat angle, GLuint axis)
         data[10] = 1.0f;
     }
 
-    return *result;
+    return result;
 }
 
 GLfloat* Matrix::GetData()
@@ -973,21 +977,21 @@ Matrix Matrix::operator *(const Matrix &matrix)
     return result;
 }
 
-Matrix & Matrix::operator =(const Matrix &matrix)
+Matrix & Matrix::operator =(const Matrix &source)
 {
-    if ((width != matrix.width) || (height != matrix.height)) {
+    if ((width != source.width) || (height != source.height)) {
         delete [] data;
-        width = matrix.width;
-        height = matrix.height;
+        width = source.width;
+        height = source.height;
         data = new GLfloat[this->width * this->height];
     }
-    memcpy(data, matrix.data, sizeof(GLfloat) * width * height);
+    memcpy(data, source.data, sizeof(GLfloat) * width * height);
     return *this;
 }
 
-Matrix & Matrix::operator =(const GLfloat *matrixData)
+Matrix & Matrix::operator =(const GLfloat *sourceData)
 {
-    memcpy(data, matrixData, sizeof(GLfloat) * width * height);
+    memcpy(data, sourceData, sizeof(GLfloat) * width * height);
     return *this;
 }
 
