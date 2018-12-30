@@ -5,8 +5,12 @@ Built program will display rotating triangle on screen. It uses the fact OpenGL 
 
 ### Raspberry Pi instructions
 
-To run this project on Raspberry Pi You will have to build it. First, clone this repository, then use "make" command as shown below:
+To run this project on Raspberry Pi You will have to build it. SDL library is required, please install it using "apt-get" command:
+```
+sudo apt-get install libsdl1.2-dev
 
+```
+To build executable clone this repository, and use "make" command as show below:
 ```
 git clone https://github.com/markondej/gles2
 cd gles2
