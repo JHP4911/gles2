@@ -67,7 +67,7 @@ class Exception : public exception
         explicit Exception(string message);
         virtual ~Exception() throw();
 
-        virtual const char* what() const throw();
+        virtual const char *what() const throw();
     private:
         string exceptionMessage;
 };
@@ -81,7 +81,7 @@ Exception::~Exception() throw()
 {
 }
 
-const char* Exception::what() const throw()
+const char *Exception::what() const throw()
 {
     return exceptionMessage.c_str();
 }
@@ -95,7 +95,7 @@ class Window
 #endif
 
         virtual ~Window();
-        static Window* Initialize();
+        static Window *Initialize();
         bool SwapBuffers();
         void Terminate();
         void GetClientSize(uint32_t &width, uint32_t &height);
@@ -112,7 +112,7 @@ class Window
         DISPMANX_RESOURCE_HANDLE_T dispmanResource;
         uint32_t fbMemSize, fbLineSize;
         VC_RECT_T dispmanRect;
-        uint8_t* framebuffer;
+        uint8_t *framebuffer;
         int fbFd;
 #endif
         pthread_t eventLoopThread;
@@ -130,10 +130,10 @@ class Window
         Window();
         void EndEventLoop();
 #ifndef _WIN32
-        static void* EventLoop(void* eventLoopInitResult);
+        static void *EventLoop(void *eventLoopInitResult);
 #else
         static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-        static void __cdecl EventLoop(void* eventLoopInitResult);
+        static void __cdecl EventLoop(void *eventLoopInitResult);
 #endif
 };
 
@@ -214,7 +214,7 @@ Window::Window() : isTerminated(false)
         throw Exception("Cannot obtain screen resolution");
     }
 
-    int returnCode = pthread_create(&eventLoopThread, NULL, &Window::EventLoop, (void*)&eventLoopInitResult);
+    int returnCode = pthread_create(&eventLoopThread, NULL, &Window::EventLoop, (void *)&eventLoopInitResult);
     if (returnCode) {
         eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
@@ -276,7 +276,7 @@ Window::Window() : isTerminated(false)
     fbMemSize = fInfo.smem_len;
     fbLineSize = vInfo.xres * vInfo.bits_per_pixel >> 3;
 
-    framebuffer = (uint8_t*)mmap(0, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0);
+    framebuffer = (uint8_t *)mmap(0, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0);
     if (framebuffer == MAP_FAILED) {
         vc_dispmanx_resource_delete(dispmanResource);
         close(fbFd);
@@ -319,7 +319,7 @@ Window::Window() : isTerminated(false)
     clientHeight = GetSystemMetrics(SM_CYSCREEN);
 #endif
 
-    eventLoopThread = (HANDLE)_beginthread(EventLoop, 0, (void*)&eventLoopInitResult);
+    eventLoopThread = (HANDLE)_beginthread(EventLoop, 0, (void *)&eventLoopInitResult);
     while (!eventLoopInitResult) {
         usleep(1);
     }
@@ -429,7 +429,7 @@ Window::~Window()
     Terminate();
 }
 
-Window* Window::Initialize()
+Window *Window::Initialize()
 {
     static Window instance;
     return &instance;
@@ -505,24 +505,24 @@ LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 #endif
 
 #ifndef _WIN32
-void* Window::EventLoop(void* eventLoopInitResult)
+void *Window::EventLoop(void *eventLoopInitResult)
 #else
-void __cdecl Window::EventLoop(void* eventLoopInitResult)
+void __cdecl Window::EventLoop(void *eventLoopInitResult)
 #endif
 {
 #ifndef _WIN32
     SDL_Event event;
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
+        *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
         return NULL;
     }
 
     SDL_WM_SetCaption("SDL Window", "SDL Icon");
 
-    SDL_Surface* sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
+    SDL_Surface *sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
     if (sdlScreen == NULL) {
-        *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
+        *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
         SDL_Quit();
         return NULL;
     }
@@ -546,7 +546,7 @@ void __cdecl Window::EventLoop(void* eventLoopInitResult)
     wcex.hIconSm = LoadIcon(NULL, IDI_APPLICATION);;
 
     if (!RegisterClassEx(&wcex)) {
-        *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
+        *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
         _endthread();
     }
 
@@ -559,7 +559,7 @@ void __cdecl Window::EventLoop(void* eventLoopInitResult)
     clientArea.bottom = (long)clientHeight;
 
     if(!AdjustWindowRectEx(&clientArea, style, false, exStyle)) {
-        *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
+        *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
         _endthread();
     }
 
@@ -572,14 +572,14 @@ void __cdecl Window::EventLoop(void* eventLoopInitResult)
 #endif
 
 	if (hWnd == NULL) {
-        *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
+        *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
         _endthread();
 	}
 
     ShowWindow(hWnd, SW_SHOW);
 #endif
 
-    *(uint32_t*)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_SUCCESS;
+    *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_SUCCESS;
 
 #ifndef _WIN32
     while (eventLoop) {
@@ -645,7 +645,7 @@ void initGLFunction(T &func, string funcName)
 class ShaderProgram
 {
     public:
-        ShaderProgram(const char* vertexShaderSrc, const char* fragmentShaderSrc, GLenum srcType);
+        ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, GLenum srcType);
         ~ShaderProgram();
 
         GLuint GetProgram();
@@ -667,7 +667,7 @@ class ShaderProgram
         static PFNGLSHADERSOURCEPROC glShaderSource;
 #endif
 
-        GLuint LoadShader(const char* shaderSrc, GLenum srcType, GLenum shaderType);
+        GLuint LoadShader(const char *shaderSrc, GLenum srcType, GLenum shaderType);
 };
 
 #ifdef _WIN32
@@ -684,7 +684,7 @@ PFNGLLINKPROGRAMPROC ShaderProgram::glLinkProgram = NULL;
 PFNGLSHADERSOURCEPROC ShaderProgram::glShaderSource = NULL;
 #endif
 
-ShaderProgram::ShaderProgram(const char* vertexShaderSrc, const char* fragmentShaderSrc, GLenum srcType)
+ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, GLenum srcType)
 {
     GLint isLinked;
 
@@ -736,11 +736,11 @@ GLuint ShaderProgram::GetProgram()
     return program;
 }
 
-GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum srcType, GLenum shaderType)
+GLuint ShaderProgram::LoadShader(const char *shaderSrc, GLenum srcType, GLenum shaderType)
 {
     GLuint shader;
     GLint isCompiled, length;
-    GLchar* code;
+    GLchar *code;
 
     ifstream file;
     switch (srcType) {
@@ -757,7 +757,7 @@ GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum srcType, GLenum s
             file.close();
             break;
         case GL_SHADER_CODE_FROM_STRING:
-            code = (GLchar*)shaderSrc;
+            code = (GLchar *)shaderSrc;
             length = (GLint)strlen(code);
             break;
         default:
@@ -775,14 +775,14 @@ GLuint ShaderProgram::LoadShader(const char* shaderSrc, GLenum srcType, GLenum s
     shader = glCreateShader(shaderType);
     if (shader == 0)
         return 0;
-    glShaderSource(shader, 1, (const GLchar**)&code, &length);
+    glShaderSource(shader, 1, (const GLchar **)&code, &length);
     glCompileShader(shader);
     glGetShaderiv(shader, GL_COMPILE_STATUS, &isCompiled);
     if (!isCompiled) {
         GLint infoLen = 0;
         glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
         if (infoLen > 1) {
-            char* infoLog = new char[infoLen];
+            char *infoLog = new char[infoLen];
             glGetShaderInfoLog(shader, infoLen, NULL, infoLog);
 #ifndef _WIN32
             cout << "Shader compilation error:" << endl << infoLog << endl;
@@ -805,10 +805,10 @@ class Matrix
         Matrix();
         Matrix(const Matrix &source);
         Matrix(GLuint width, GLuint height);
-        Matrix(GLuint width, GLuint height, GLfloat* matrixData);
+        Matrix(GLuint width, GLuint height, GLfloat *matrixData);
         ~Matrix();
 
-        GLfloat* GetData();
+        GLfloat *GetData();
 
         void GetSize(GLuint &width, GLuint &height);
         void SetSize(GLuint width, GLuint height);
@@ -817,13 +817,13 @@ class Matrix
         Matrix operator -(const Matrix &matrix);
         Matrix operator *(const Matrix &matrix);
         Matrix & operator =(const Matrix &source);
-        Matrix & operator =(const GLfloat* sourceData);
+        Matrix & operator =(const GLfloat *sourceData);
 
         static Matrix GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane);
         static Matrix GenerateTranslation(GLfloat x, GLfloat y, GLfloat z);
         static Matrix GenerateRotation(GLfloat angle, GLuint axis);
     private:
-        GLfloat* data;
+        GLfloat *data;
         GLuint width;
         GLuint height;
 };
@@ -870,7 +870,7 @@ Matrix::~Matrix()
 Matrix Matrix::GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane)
 {
     Matrix result(4, 4);
-    GLfloat* data = result.GetData();
+    GLfloat *data = result.GetData();
 
     data[0] = 2.0f * nearPane / width;
     data[5] = 2.0f * nearPane / height;
@@ -884,7 +884,7 @@ Matrix Matrix::GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPan
 Matrix Matrix::GenerateTranslation(GLfloat x, GLfloat y, GLfloat z)
 {
     Matrix result(4, 4);
-    GLfloat* data = result.GetData();
+    GLfloat *data = result.GetData();
 
     for (GLuint i = 0; i < 4; i++) {
         data[i + i * 4] = 1.0f;
@@ -899,7 +899,7 @@ Matrix Matrix::GenerateTranslation(GLfloat x, GLfloat y, GLfloat z)
 Matrix Matrix::GenerateRotation(GLfloat angle, GLuint axis)
 {
     Matrix result(4, 4);
-    GLfloat* data = result.GetData();
+    GLfloat *data = result.GetData();
 
     data[15] = 1.0f;
     GLfloat sinAngle = (GLfloat)sin(angle * M_PI / 180.0f);
@@ -930,7 +930,7 @@ Matrix Matrix::GenerateRotation(GLfloat angle, GLuint axis)
     return result;
 }
 
-GLfloat* Matrix::GetData()
+GLfloat *Matrix::GetData()
 {
     return data;
 }
@@ -1009,7 +1009,7 @@ void Matrix::SetSize(GLuint width, GLuint height)
     if ((this->width == width) && (this->height == height)) {
         return;
     }
-    GLfloat* oldData = data;
+    GLfloat *oldData = data;
     data = new GLfloat[width * height];
     memset(data, 0, sizeof(GLfloat) * width * height);
     for (GLuint i = 0; i < min(this->width, width); i++) {
@@ -1051,7 +1051,7 @@ int main(int argc, const char **argv)
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 #endif
 {
-    Window* window = NULL;
+    Window *window = NULL;
 #ifndef _WIN32
     signal(SIGINT, signalHandler);
 #endif
@@ -1136,10 +1136,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             glUniformMatrix4fv(rotMatrixUniform, 1, GL_FALSE, rotation.GetData());
 
             glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-            glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+            glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
 
             glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-            glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+            glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
 
             glEnableVertexAttribArray(vertColorAttribute);
             glEnableVertexAttribArray(vertPositionAttribute);
