@@ -95,7 +95,7 @@ class Window
 #endif
 
         virtual ~Window();
-        static Window *Initialize();
+        static Window &Initialize();
         bool SwapBuffers();
         void Terminate();
         void GetClientSize(uint32_t &width, uint32_t &height);
@@ -128,6 +128,8 @@ class Window
         bool isTerminated;
 
         Window();
+        Window(const Window &source);
+        Window& operator=(const Window &source);
         void EndEventLoop();
 #ifndef _WIN32
         static void *EventLoop(void *eventLoopInitResult);
@@ -429,10 +431,10 @@ Window::~Window()
     Terminate();
 }
 
-Window *Window::Initialize()
+Window &Window::Initialize()
 {
     static Window instance;
-    return &instance;
+    return instance;
 }
 
 bool Window::SwapBuffers()
@@ -1057,7 +1059,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #endif
 
     try {
-        window = Window::Initialize();
+        window = &Window::Initialize();
         window->SetOnCloseCallback(closeRequestHandler);
 
 #ifdef _WIN32
