@@ -129,7 +129,7 @@ class Window
 
         Window();
         Window(const Window &source);
-        Window& operator=(const Window &source);
+        Window &operator=(const Window &source);
         void EndEventLoop();
 #ifndef _WIN32
         static void *EventLoop(void *eventLoopInitResult);
@@ -669,6 +669,8 @@ class ShaderProgram
         static PFNGLSHADERSOURCEPROC glShaderSource;
 #endif
 
+        ShaderProgram(const ShaderProgram &source);
+        ShaderProgram &operator=(const ShaderProgram &source);
         GLuint LoadShader(const char *shaderSrc, GLenum srcType, GLenum shaderType);
 };
 
@@ -815,11 +817,11 @@ class Matrix
         void GetSize(GLuint &width, GLuint &height);
         void SetSize(GLuint width, GLuint height);
 
-        Matrix operator +(const Matrix &matrix);
-        Matrix operator -(const Matrix &matrix);
-        Matrix operator *(const Matrix &matrix);
-        Matrix & operator =(const Matrix &source);
-        Matrix & operator =(const GLfloat *sourceData);
+        Matrix operator+(const Matrix &matrix);
+        Matrix operator-(const Matrix &matrix);
+        Matrix operator*(const Matrix &matrix);
+        Matrix &operator=(const Matrix &source);
+        Matrix &operator=(const GLfloat *sourceData);
 
         static Matrix GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane);
         static Matrix GenerateTranslation(GLfloat x, GLfloat y, GLfloat z);
@@ -937,7 +939,7 @@ GLfloat *Matrix::GetData()
     return data;
 }
 
-Matrix Matrix::operator +(const Matrix &matrix)
+Matrix Matrix::operator+(const Matrix &matrix)
 {
     if ((width != matrix.width) || (height != matrix.height)) {
         throw Exception("Cannot add matrices - incompatible matrix dimensions");
@@ -949,7 +951,7 @@ Matrix Matrix::operator +(const Matrix &matrix)
     return result;
 }
 
-Matrix Matrix::operator -(const Matrix &matrix)
+Matrix Matrix::operator-(const Matrix &matrix)
 {
     if ((width != matrix.width) || (height != matrix.height)) {
         throw Exception("Cannot subtract matrices - incompatible matrix dimensions");
@@ -961,7 +963,7 @@ Matrix Matrix::operator -(const Matrix &matrix)
     return result;
 }
 
-Matrix Matrix::operator *(const Matrix &matrix)
+Matrix Matrix::operator*(const Matrix &matrix)
 {
     if (width != matrix.height) {
         throw Exception("Cannot multiply matrices - incompatible matrix dimensions");
@@ -979,7 +981,7 @@ Matrix Matrix::operator *(const Matrix &matrix)
     return result;
 }
 
-Matrix & Matrix::operator =(const Matrix &source)
+Matrix &Matrix::operator=(const Matrix &source)
 {
     if ((width != source.width) || (height != source.height)) {
         delete [] data;
@@ -991,7 +993,7 @@ Matrix & Matrix::operator =(const Matrix &source)
     return *this;
 }
 
-Matrix & Matrix::operator =(const GLfloat *sourceData)
+Matrix &Matrix::operator=(const GLfloat *sourceData)
 {
     memcpy(data, sourceData, sizeof(GLfloat) * width * height);
     return *this;
