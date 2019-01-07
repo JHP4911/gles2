@@ -631,12 +631,12 @@ void Window::SetOnCloseCallback(OnCloseCallback callback)
 }
 
 #ifdef _WIN32
-template <typename T>
-void initGLFunction(T &func, string funcName)
+template <typename FunctionType>
+void initGLFunction(FunctionType &func, string funcName)
 {
     ostringstream oss;
     if (func == NULL) {
-        if ((func = reinterpret_cast <T> (wglGetProcAddress(funcName.c_str()))) == NULL) {
+        if ((func = reinterpret_cast <FunctionType> (wglGetProcAddress(funcName.c_str()))) == NULL) {
             oss << "Cannot initialize " << funcName << " function";
             throw Exception(oss.str());
         }
