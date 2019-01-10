@@ -14,6 +14,7 @@
 #include <GLES2/gl2.h>
 #include <bcm_host.h>
 #else
+#include <queue>
 #include <sstream>
 #ifdef _MSC_VER
 #include <process.h>
@@ -43,11 +44,12 @@ using std::min;
 #define ROTATION_AXIS_Y 1
 #define ROTATION_AXIS_Z 2
 
-#define GL_SHADER_CODE_FROM_FILE 1
 #define GL_SHADER_CODE_FROM_STRING 0
+#define GL_SHADER_CODE_FROM_FILE 1
 
-#define EVENT_LOOP_INIT_RESULT_SUCCESS 1
-#define EVENT_LOOP_INIT_RESULT_FAILURE 2
+#define WINDOW_EVENT_NO_EVENT 0
+#define WINDOW_EVENT_ESC_KEY_PRESSED 1
+#define WINDOW_EVENT_WINDOW_CLOSED 2
 
 #ifdef _WIN32
 void usleep(uint32_t uSec)
@@ -86,10 +88,11 @@ const char *Exception::what() const throw()
     return exceptionMessage.c_str();
 }
 
+using std::queue;
+
 class Window
 {
     public:
-        typedef void(*OnCloseCallback)();
 #ifdef _WIN32
         static int32_t exitCode;
 #endif
@@ -99,7 +102,7 @@ class Window
         bool SwapBuffers();
         void Terminate();
         void GetClientSize(uint32_t &width, uint32_t &height);
-        void SetOnCloseCallback(OnCloseCallback onCloseCallback);
+        int32_t PollEvent();
     private:
 #ifndef _WIN32
         DISPMANX_DISPLAY_HANDLE_T dispmanDisplay;
@@ -115,38 +118,29 @@ class Window
         uint8_t *framebuffer;
         int fbFd;
 #endif
-        pthread_t eventLoopThread;
 #else
-        static HWND hWnd;
+        HWND hWnd;
+        HINSTANCE hInstance;
         HANDLE eventLoopThread;
         HGLRC hRC;
         HDC hDC;
+        static queue<int32_t> *events;
 #endif
-        static OnCloseCallback onCloseCallback;
-        static uint32_t clientWidth, clientHeight;
-        static bool eventLoop;
+        uint32_t clientWidth, clientHeight;
         bool isTerminated;
 
         Window();
         Window(const Window &source);
         Window &operator=(const Window &source);
-        void EndEventLoop();
-#ifndef _WIN32
-        static void *EventLoop(void *eventLoopInitResult);
-#else
+#ifdef _WIN32
         static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-        static void __cdecl EventLoop(void *eventLoopInitResult);
 #endif
 };
 
 #ifdef _WIN32
 int32_t Window::exitCode = 0;
-HWND Window::hWnd = NULL;
+queue<int32_t> *Window::events = NULL;
 #endif
-bool Window::eventLoop = true;
-uint32_t Window::clientWidth = 0;
-uint32_t Window::clientHeight = 0;
-Window::OnCloseCallback Window::onCloseCallback = NULL;
 
 Window::Window() : isTerminated(false)
 {
@@ -160,20 +154,33 @@ Window::Window() : isTerminated(false)
 
     VC_RECT_T dstRect, srcRect;
 #else
+    WNDCLASSEX wcex;
     PIXELFORMATDESCRIPTOR pfd;
     GLuint pixelFormat;
     PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
 #endif
 
-    uint32_t eventLoopInitResult = 0;
-
 #ifndef _WIN32
+    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        throw Exception("Cannot create SDL window")
+    }
+
+    SDL_WM_SetCaption("SDL Window", "SDL Icon");
+
+    SDL_Surface *sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
+    if (sdlScreen == NULL) {
+        SDL_Quit();
+        throw Exception("Cannot create SDL window")
+    }
+
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (eglDisplay == EGL_NO_DISPLAY) {
+        SDL_Quit();
         throw Exception("Cannot obtain EGL display connection");
     }
 
     if (eglInitialize(eglDisplay, NULL, NULL) != EGL_TRUE) {
+        SDL_Quit();
         throw Exception("Cannot initialize EGL display connection");
     }
 
@@ -190,11 +197,13 @@ Window::Window() : isTerminated(false)
 
     if (eglChooseConfig(eglDisplay, attribList, &config, 1, &numConfig) != EGL_TRUE) {
         eglTerminate(eglDisplay);
+        SDL_Quit();
         throw Exception("Cannot obtain EGL frame buffer configuration");
     }
 
     if (eglBindAPI(EGL_OPENGL_ES_API) != EGL_TRUE) {
         eglTerminate(eglDisplay);
+        SDL_Quit();
         throw Exception("Cannot set rendering API");
 	}
 
@@ -207,28 +216,15 @@ Window::Window() : isTerminated(false)
     eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttrib);
     if (eglContext == EGL_NO_CONTEXT) {
         eglTerminate(eglDisplay);
+        SDL_Quit();
         throw Exception("Cannot create EGL rendering context");
     }
 
     if (graphics_get_display_size(0, &clientWidth, &clientHeight) < 0) {
         eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
+        SDL_Quit();
         throw Exception("Cannot obtain screen resolution");
-    }
-
-    int returnCode = pthread_create(&eventLoopThread, NULL, &Window::EventLoop, (void *)&eventLoopInitResult);
-    if (returnCode) {
-        eglDestroyContext(eglDisplay, eglContext);
-        eglTerminate(eglDisplay);
-        throw Exception("Cannot create event loop thread");
-    }
-    while (!eventLoopInitResult) {
-        usleep(1);
-    }
-    if (eventLoopInitResult != EVENT_LOOP_INIT_RESULT_SUCCESS) {
-        eglDestroyContext(eglDisplay, eglContext);
-        eglTerminate(eglDisplay);
-        throw Exception("Cannot create SDL window");
     }
 
     dstRect.x = 0;
@@ -255,6 +251,7 @@ Window::Window() : isTerminated(false)
         eglDestroyContext(eglDisplay, eglContext);
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
+        SDL_Quit();
         throw Exception("Cannot open secondary framebuffer");
     }
     if (ioctl(fbFd, FBIOGET_FSCREENINFO, &fInfo) ||
@@ -263,6 +260,7 @@ Window::Window() : isTerminated(false)
         eglDestroyContext(eglDisplay, eglContext);
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
+        SDL_Quit();
         throw Exception("Cannot access secondary framebuffer information");
     }
 
@@ -272,6 +270,7 @@ Window::Window() : isTerminated(false)
         eglDestroyContext(eglDisplay, eglContext);
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
+        SDL_Quit();
         throw Exception("Cannot initialize secondary display");
     }
 
@@ -285,6 +284,7 @@ Window::Window() : isTerminated(false)
         eglDestroyContext(eglDisplay, eglContext);
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
+        SDL_Quit();
         throw Exception("Cannot initialize secondary framebuffer memory mapping");
     }
 
@@ -309,7 +309,7 @@ Window::Window() : isTerminated(false)
         eglDestroyContext(eglDisplay, eglContext);
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
-        EndEventLoop();
+        SDL_Quit();
         throw Exception("Cannot create new EGL window surface");
     }
 #else
@@ -321,17 +321,56 @@ Window::Window() : isTerminated(false)
     clientHeight = GetSystemMetrics(SM_CYSCREEN);
 #endif
 
-    eventLoopThread = (HANDLE)_beginthread(EventLoop, 0, (void *)&eventLoopInitResult);
-    while (!eventLoopInitResult) {
-        usleep(1);
-    }
-    if (eventLoopInitResult != EVENT_LOOP_INIT_RESULT_SUCCESS) {
+    hInstance = GetModuleHandle(NULL);
+    wcex.cbSize = sizeof(WNDCLASSEX);
+    wcex.style = CS_OWNDC;
+    wcex.lpfnWndProc = Window::WindowProc;
+    wcex.cbClsExtra = 0;
+    wcex.cbWndExtra = 0;
+    wcex.hInstance = hInstance;
+    wcex.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+    wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wcex.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wcex.lpszMenuName = NULL;
+    wcex.lpszClassName = "OpenGLWindow";
+    wcex.hIconSm = LoadIcon(NULL, IDI_APPLICATION);;
+
+    if (!RegisterClassEx(&wcex)) {
         throw Exception("Cannot create OpenGL window");
     }
 
+    DWORD exStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
+    DWORD style = WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX;
+
+    RECT clientArea;
+    memset(&clientArea, 0, sizeof(RECT));
+    clientArea.right = (long)clientWidth;
+    clientArea.bottom = (long)clientHeight;
+
+    if(!AdjustWindowRectEx(&clientArea, style, false, exStyle)) {
+        UnregisterClass("OpenGLWindow", hInstance);
+        throw Exception("Cannot create OpenGL window");
+    }
+
+    hWnd = CreateWindowEx(exStyle, "OpenGLWindow", "OpenGL Window", style, CW_USEDEFAULT, CW_USEDEFAULT,
+        clientArea.right - clientArea.left, clientArea.bottom - clientArea.top, NULL, NULL, hInstance, NULL);
+
+#ifdef FORCE_FULLSCREEN
+    SetWindowLong(hWnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+    SetWindowPos(hWnd, HWND_TOP, 0, 0, clientWidth, clientHeight, SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+#endif
+
+	if (hWnd == NULL) {
+        UnregisterClass("OpenGLWindow", hInstance);
+        throw Exception("Cannot create OpenGL window");
+	}
+
+    ShowWindow(hWnd, SW_SHOW);
+
     hDC = GetDC(hWnd);
     if (hDC == NULL) {
-        EndEventLoop();
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw Exception("Cannot obtain device context handle");
     }
 
@@ -347,20 +386,23 @@ Window::Window() : isTerminated(false)
     pixelFormat = ChoosePixelFormat(hDC, &pfd);
     if (!pixelFormat) {
         ReleaseDC(hWnd, hDC);
-        EndEventLoop();
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw Exception("Cannot obtain correct pixel format configuration");
     }
 
     if (!SetPixelFormat(hDC, pixelFormat, &pfd)) {
         ReleaseDC(hWnd, hDC);
-        EndEventLoop();
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw Exception("Cannot set correct pixel format configuration");
     }
 
     hRC = wglCreateContext(hDC);
     if (hRC == NULL) {
         ReleaseDC(hWnd, hDC);
-        EndEventLoop();
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw Exception("Cannot create OpenGL rendering context");
     }
 #endif
@@ -376,14 +418,15 @@ Window::Window() : isTerminated(false)
         eglDestroyContext(eglDisplay, eglContext);
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
-        EndEventLoop();
+        SDL_Quit();
         throw Exception("Cannot attach EGL rendering context to EGL surface");
     }
 #else
     if (!wglMakeCurrent(hDC, hRC)) {
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
-        EndEventLoop();
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw Exception("Cannot attach OpenGL rendering context to thread");
     }
 
@@ -399,7 +442,8 @@ Window::Window() : isTerminated(false)
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
-        EndEventLoop();
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw Exception("Cannot initialize wglCreateContextAttribsARB function");
     }
 
@@ -408,7 +452,8 @@ Window::Window() : isTerminated(false)
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
-        EndEventLoop();
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw Exception("Cannot create OpenGL rendering context");
     }
 
@@ -418,11 +463,13 @@ Window::Window() : isTerminated(false)
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC3);
         ReleaseDC(hWnd, hDC);
-        EndEventLoop();
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw Exception("Cannot attach OpenGL rendering context to thread");
     }
 
     hRC = hRC3;
+    events = new queue<int32_t>();
 #endif
 }
 
@@ -467,34 +514,56 @@ void Window::Terminate() {
         eglDestroyContext(eglDisplay, eglContext);
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
+        SDL_Quit();
 #else
+        delete events;
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
 #endif
-        EndEventLoop();
         isTerminated = true;
     }
 }
 
-void Window::EndEventLoop()
+int32_t Window::PollEvent()
 {
-    eventLoop = false;
-
 #ifndef _WIN32
-    pthread_join(eventLoopThread, NULL);
+    SDL_Event event;
+    if (SDL_PollEvent(&event)) {
+        if ((event.type == SDL_KEYDOWN) && (event.key.keysym.sym == SDLK_ESCAPE)) {
+            return WINDOW_EVENT_ESC_KEY_PRESSED;
+        }
+    }
 #else
-    WaitForSingleObject(eventLoopThread, INFINITE);
+    MSG msg;
+    if (!events->empty()) {
+        int32_t event = events->back();
+        events->pop();
+        return event;
+    } else if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+        if (msg.message == WM_QUIT) {
+            exitCode = (int32_t)msg.wParam;
+            return WINDOW_EVENT_WINDOW_CLOSED;
+        } else {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+    }
 #endif
+    return WINDOW_EVENT_NO_EVENT;
 }
+
 
 #ifdef _WIN32
 LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    if ((msg == WM_CLOSE) || ((msg == WM_KEYDOWN) && (wParam == VK_ESCAPE))) {
-        if (onCloseCallback != NULL) {
-            onCloseCallback();
-        }
+    if (msg == WM_CLOSE) {
+        events->push(WINDOW_EVENT_WINDOW_CLOSED);
+        return 0;
+    } else if ((msg == WM_KEYDOWN) && (wParam == VK_ESCAPE)) {
+        events->push(WINDOW_EVENT_ESC_KEY_PRESSED);
         return 0;
     } else if ((msg == WM_SETCURSOR) && (LOWORD(lParam) == HTCLIENT)) {
         SetCursor(NULL);
@@ -506,128 +575,10 @@ LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 }
 #endif
 
-#ifndef _WIN32
-void *Window::EventLoop(void *eventLoopInitResult)
-#else
-void __cdecl Window::EventLoop(void *eventLoopInitResult)
-#endif
-{
-#ifndef _WIN32
-    SDL_Event event;
-
-    if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
-        return NULL;
-    }
-
-    SDL_WM_SetCaption("SDL Window", "SDL Icon");
-
-    SDL_Surface *sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
-    if (sdlScreen == NULL) {
-        *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
-        SDL_Quit();
-        return NULL;
-    }
-#else
-    HINSTANCE hInstance;
-    WNDCLASSEX wcex;
-    MSG msg;
-
-    hInstance = GetModuleHandle(NULL);
-    wcex.cbSize = sizeof(WNDCLASSEX);
-    wcex.style = CS_OWNDC;
-    wcex.lpfnWndProc = Window::WindowProc;
-    wcex.cbClsExtra = 0;
-    wcex.cbWndExtra = 0;
-    wcex.hInstance = hInstance;
-    wcex.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-    wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wcex.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
-    wcex.lpszMenuName = NULL;
-    wcex.lpszClassName = "OpenGLWindow";
-    wcex.hIconSm = LoadIcon(NULL, IDI_APPLICATION);;
-
-    if (!RegisterClassEx(&wcex)) {
-        *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
-        _endthread();
-    }
-
-    DWORD exStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
-    DWORD style = WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX;
-
-    RECT clientArea;
-    memset(&clientArea, 0, sizeof(RECT));
-    clientArea.right = (long)clientWidth;
-    clientArea.bottom = (long)clientHeight;
-
-    if(!AdjustWindowRectEx(&clientArea, style, false, exStyle)) {
-        *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
-        _endthread();
-    }
-
-    hWnd = CreateWindowEx(exStyle, "OpenGLWindow", "OpenGL Window", style, CW_USEDEFAULT, CW_USEDEFAULT,
-        clientArea.right - clientArea.left, clientArea.bottom - clientArea.top, NULL, NULL, hInstance, NULL);
-
-#ifdef FORCE_FULLSCREEN
-    SetWindowLong(hWnd, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
-    SetWindowPos(hWnd, HWND_TOP, 0, 0, clientWidth, clientHeight, SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-#endif
-
-	if (hWnd == NULL) {
-        *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_FAILURE;
-        _endthread();
-	}
-
-    ShowWindow(hWnd, SW_SHOW);
-#endif
-
-    *(uint32_t *)eventLoopInitResult = EVENT_LOOP_INIT_RESULT_SUCCESS;
-
-#ifndef _WIN32
-    while (eventLoop) {
-        if (SDL_PollEvent(&event) && (event.type == SDL_KEYDOWN) && (event.key.keysym.sym == SDLK_ESCAPE)) {
-            if (onCloseCallback != NULL) {
-                onCloseCallback();
-            }
-        }
-#else
-    while (true) {
-        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) {
-                exitCode = (int32_t)msg.wParam;
-                break;
-            } else {
-                TranslateMessage(&msg);
-                DispatchMessage(&msg);
-            }
-        }
-        if (!eventLoop) {
-            PostQuitMessage(0);
-        }
-#endif
-        usleep(1);
-    }
-
-#ifndef _WIN32
-    SDL_Quit();
-    sdlScreen = NULL;
-    return NULL;
-#else
-    DestroyWindow(hWnd);
-    UnregisterClass("OpenGLWindow", hInstance);
-    _endthread();
-#endif
-}
-
 void Window::GetClientSize(uint32_t &width, uint32_t &height)
 {
     width = clientWidth;
     height = clientHeight;
-}
-
-void Window::SetOnCloseCallback(OnCloseCallback callback)
-{
-    onCloseCallback = callback;
 }
 
 #ifdef _WIN32
@@ -1045,10 +996,6 @@ PFNGLUSEPROGRAMPROC glUseProgram = NULL;
 PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
 #endif
 
-void closeRequestHandler() {
-    quit = true;
-}
-
 #ifndef _WIN32
 int main(int argc, const char **argv)
 #else
@@ -1062,7 +1009,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     try {
         window = &Window::Initialize();
-        window->SetOnCloseCallback(closeRequestHandler);
 
 #ifdef _WIN32
         initGLFunction(glBindBuffer, "glBindBuffer");
@@ -1132,31 +1078,38 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
         while (!quit) {
             Matrix rotation = Matrix::GenerateRotation(angle, ROTATION_AXIS_Z);
+            switch (window->PollEvent()) {
+                case WINDOW_EVENT_NO_EVENT:
+                    glClearColor(0.15f, 0.25f, 0.35f, 1.0f);
+                    glClear(GL_COLOR_BUFFER_BIT);
 
-            glClearColor(0.15f, 0.25f, 0.35f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
+                    glUseProgram(program.GetProgram());
+                    glUniformMatrix4fv(rotMatrixUniform, 1, GL_FALSE, rotation.GetData());
 
-            glUseProgram(program.GetProgram());
-            glUniformMatrix4fv(rotMatrixUniform, 1, GL_FALSE, rotation.GetData());
+                    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+                    glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
 
-            glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-            glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
+                    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+                    glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
 
-            glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-            glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
+                    glEnableVertexAttribArray(vertColorAttribute);
+                    glEnableVertexAttribArray(vertPositionAttribute);
 
-            glEnableVertexAttribArray(vertColorAttribute);
-            glEnableVertexAttribArray(vertPositionAttribute);
+                    glDrawArrays(GL_TRIANGLES, 0, 3);
 
-            glDrawArrays(GL_TRIANGLES, 0, 3);
+                    glDisableVertexAttribArray(vertPositionAttribute);
+                    glDisableVertexAttribArray(vertColorAttribute);
 
-            glDisableVertexAttribArray(vertPositionAttribute);
-            glDisableVertexAttribArray(vertColorAttribute);
+                    window->SwapBuffers();
 
-            window->SwapBuffers();
-
-            angle += 0.1f;
-            usleep(1000);
+                    angle += 0.1f;
+                    usleep(1000);
+                    break;
+                case WINDOW_EVENT_ESC_KEY_PRESSED:
+                case WINDOW_EVENT_WINDOW_CLOSED:
+                    quit = true;
+                    break;
+            }
         }
 
         window->Terminate();

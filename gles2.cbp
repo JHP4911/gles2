@@ -26,8 +26,9 @@
 			</Target>
 		</Build>
 		<Compiler>
-			<Add option="-Wall" />
 			<Add option="-O3" />
+			<Add option="-Wall" />
+			<Add option="-D_WIN32" />
 		</Compiler>
 		<Linker>
 			<Add library="opengl32" />
