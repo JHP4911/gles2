@@ -27,6 +27,7 @@ using std::cin;
 using std::cout;
 using std::endl;
 #else
+using std::queue;
 using std::ostringstream;
 #endif
 using std::ios;
@@ -85,8 +86,6 @@ const char *Exception::what() const throw()
 {
     return exceptionMessage.c_str();
 }
-
-using std::queue;
 
 class Window
 {
@@ -160,7 +159,7 @@ Window::Window()
 
 #ifndef _WIN32
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        throw Exception("Cannot create SDL window")
+        throw Exception("Cannot create SDL window");
     }
 
     SDL_WM_SetCaption("SDL Window", "SDL Icon");
@@ -168,7 +167,7 @@ Window::Window()
     SDL_Surface *sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
     if (sdlScreen == NULL) {
         SDL_Quit();
-        throw Exception("Cannot create SDL window")
+        throw Exception("Cannot create SDL window");
     }
 
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
