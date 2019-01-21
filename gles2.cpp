@@ -589,7 +589,6 @@ void __cdecl Window::EventLoop(void *eventLoopInitResult)
             if (onCloseCallback != NULL) {
                 onCloseCallback();
             }
-        }
 #else
     while (true) {
         if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -600,12 +599,15 @@ void __cdecl Window::EventLoop(void *eventLoopInitResult)
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
+#endif
+        } else {
+            usleep(1);
         }
+#ifdef _WIN32
         if (!eventLoop) {
             PostQuitMessage(0);
         }
 #endif
-        usleep(1);
     }
 
 #ifndef _WIN32
