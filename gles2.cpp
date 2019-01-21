@@ -16,9 +16,6 @@
 #else
 #include <queue>
 #include <sstream>
-#ifdef _MSC_VER
-#include <process.h>
-#endif
 #include <windows.h>
 #include "GL/gl.h"
 #include "GL/wglext.h"
@@ -50,6 +47,7 @@ using std::min;
 #define WINDOW_EVENT_NO_EVENT 0
 #define WINDOW_EVENT_ESC_KEY_PRESSED 1
 #define WINDOW_EVENT_WINDOW_CLOSED 2
+#define WINDOW_EVENT_APPLICATION_TERMINATED 3
 
 #ifdef _WIN32
 void usleep(uint32_t uSec)
@@ -99,8 +97,8 @@ class Window
 
         virtual ~Window();
         static Window &Initialize();
+        void Close();
         bool SwapBuffers();
-        void Terminate();
         void GetClientSize(uint32_t &width, uint32_t &height);
         int32_t PollEvent();
     private:
@@ -111,6 +109,7 @@ class Window
         EGLDisplay eglDisplay;
         EGLContext eglContext;
         EGLSurface eglSurface;
+        bool quit;
 #ifdef TFT_OUTPUT
         DISPMANX_RESOURCE_HANDLE_T dispmanResource;
         uint32_t fbMemSize, fbLineSize;
@@ -127,7 +126,6 @@ class Window
         static queue<int32_t> *events;
 #endif
         uint32_t clientWidth, clientHeight;
-        bool isTerminated;
 
         Window();
         Window(const Window &source);
@@ -142,7 +140,7 @@ int32_t Window::exitCode = 0;
 queue<int32_t> *Window::events = NULL;
 #endif
 
-Window::Window() : isTerminated(false)
+Window::Window()
 {
 #ifndef _WIN32
     bcm_host_init();
@@ -421,6 +419,8 @@ Window::Window() : isTerminated(false)
         SDL_Quit();
         throw Exception("Cannot attach EGL rendering context to EGL surface");
     }
+
+    quit = false;
 #else
     if (!wglMakeCurrent(hDC, hRC)) {
         wglDeleteContext(hRC);
@@ -475,7 +475,26 @@ Window::Window() : isTerminated(false)
 
 Window::~Window()
 {
-    Terminate();
+#ifndef _WIN32
+    eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    eglDestroySurface(eglDisplay, eglSurface);
+#ifdef TFT_OUTPUT
+    munmap(framebuffer, fbMemSize);
+    vc_dispmanx_resource_delete(dispmanResource);
+    close(fbFd);
+#endif
+    eglDestroyContext(eglDisplay, eglContext);
+    vc_dispmanx_display_close(dispmanDisplay);
+    eglTerminate(eglDisplay);
+    SDL_Quit();
+#else
+    delete events;
+    wglMakeCurrent(NULL, NULL);
+    wglDeleteContext(hRC);
+    ReleaseDC(hWnd, hDC);
+    DestroyWindow(hWnd);
+    UnregisterClass("OpenGLWindow", hInstance);
+#endif
 }
 
 Window &Window::Initialize()
@@ -484,11 +503,16 @@ Window &Window::Initialize()
     return instance;
 }
 
+void Window::Close() {
+#ifndef _WIN32
+    quit = true;
+#else
+    PostQuitMessage(0);
+#endif
+}
+
 bool Window::SwapBuffers()
 {
-    if (isTerminated) {
-        return false;
-    }
 #ifndef _WIN32
     bool swapResult = eglSwapBuffers(eglDisplay, eglSurface) == EGL_TRUE;
 #ifdef TFT_OUTPUT
@@ -501,32 +525,6 @@ bool Window::SwapBuffers()
 #endif
 }
 
-void Window::Terminate() {
-    if (!isTerminated) {
-#ifndef _WIN32
-        eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        eglDestroySurface(eglDisplay, eglSurface);
-#ifdef TFT_OUTPUT
-        munmap(framebuffer, fbMemSize);
-        vc_dispmanx_resource_delete(dispmanResource);
-        close(fbFd);
-#endif
-        eglDestroyContext(eglDisplay, eglContext);
-        vc_dispmanx_display_close(dispmanDisplay);
-        eglTerminate(eglDisplay);
-        SDL_Quit();
-#else
-        delete events;
-        wglMakeCurrent(NULL, NULL);
-        wglDeleteContext(hRC);
-        ReleaseDC(hWnd, hDC);
-        DestroyWindow(hWnd);
-        UnregisterClass("OpenGLWindow", hInstance);
-#endif
-        isTerminated = true;
-    }
-}
-
 int32_t Window::PollEvent()
 {
 #ifndef _WIN32
@@ -535,7 +533,8 @@ int32_t Window::PollEvent()
         if ((event.type == SDL_KEYDOWN) && (event.key.keysym.sym == SDLK_ESCAPE)) {
             return WINDOW_EVENT_ESC_KEY_PRESSED;
         }
-    }
+    } else if (quit) {
+        return WINDOW_EVENT_APPLICATION_TERMINATED;
 #else
     MSG msg;
     if (!events->empty()) {
@@ -545,13 +544,13 @@ int32_t Window::PollEvent()
     } else if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT) {
             exitCode = (int32_t)msg.wParam;
-            return WINDOW_EVENT_WINDOW_CLOSED;
+            return WINDOW_EVENT_APPLICATION_TERMINATED;
         } else {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
-    }
 #endif
+    }
     return WINDOW_EVENT_NO_EVENT;
 }
 
@@ -1107,16 +1106,14 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     break;
                 case WINDOW_EVENT_ESC_KEY_PRESSED:
                 case WINDOW_EVENT_WINDOW_CLOSED:
+                    window->Close();
+                    break;
+                case WINDOW_EVENT_APPLICATION_TERMINATED:
                     quit = true;
                     break;
             }
         }
-
-        window->Terminate();
     } catch (exception &e) {
-        if (window != NULL) {
-            window->Terminate();
-        }
         #ifndef _WIN32
             cout << e.what() << endl;
         #else
