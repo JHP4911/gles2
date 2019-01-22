@@ -50,18 +50,6 @@ using std::min;
 #define WINDOW_EVENT_WINDOW_CLOSED 2
 #define WINDOW_EVENT_APPLICATION_TERMINATED 3
 
-#ifdef _WIN32
-void usleep(uint32_t uSec)
-{
-    LARGE_INTEGER ft;
-    ft.QuadPart = -(10 * (int64_t)uSec);
-    HANDLE timer = CreateWaitableTimer(NULL, TRUE, NULL);
-    SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
-    WaitForSingleObject(timer, INFINITE);
-    CloseHandle(timer);
-}
-#endif
-
 class Exception : public exception
 {
     public:
@@ -87,6 +75,30 @@ const char *Exception::what() const throw()
     return exceptionMessage.c_str();
 }
 
+#ifdef _WIN32
+void usleep(uint32_t uSec)
+{
+    LARGE_INTEGER ft;
+    ft.QuadPart = -(10 * (int64_t)uSec);
+    HANDLE timer = CreateWaitableTimer(NULL, TRUE, NULL);
+    SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
+    WaitForSingleObject(timer, INFINITE);
+    CloseHandle(timer);
+}
+
+template <typename FunctionType>
+void initGLFunction(FunctionType &func, string funcName)
+{
+    if (func == NULL) {
+        if ((func = reinterpret_cast <FunctionType> (wglGetProcAddress(funcName.c_str()))) == NULL) {
+            ostringstream oss;
+            oss << "Cannot initialize " << funcName << " function";
+            throw Exception(oss.str());
+        }
+    }
+}
+#endif
+
 class Window
 {
     public:
@@ -103,7 +115,6 @@ class Window
     private:
 #ifndef _WIN32
         DISPMANX_DISPLAY_HANDLE_T dispmanDisplay;
-        DISPMANX_UPDATE_HANDLE_T dispmanUpdate;
         DISPMANX_ELEMENT_HANDLE_T dispmanElement;
         EGLDisplay eglDisplay;
         EGLContext eglContext;
@@ -144,20 +155,6 @@ Window::Window()
 #ifndef _WIN32
     bcm_host_init();
 
-    EGLConfig config;
-    EGLint numConfig;
-
-    static EGL_DISPMANX_WINDOW_T nativeWindow;
-
-    VC_RECT_T dstRect, srcRect;
-#else
-    WNDCLASSEX wcex;
-    PIXELFORMATDESCRIPTOR pfd;
-    GLuint pixelFormat;
-    PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
-#endif
-
-#ifndef _WIN32
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         throw Exception("Cannot create SDL window");
     }
@@ -192,6 +189,8 @@ Window::Window()
         EGL_NONE
     };
 
+    EGLConfig config;
+    EGLint numConfig;
     if (eglChooseConfig(eglDisplay, attribList, &config, 1, &numConfig) != EGL_TRUE) {
         eglTerminate(eglDisplay);
         SDL_Quit();
@@ -224,6 +223,8 @@ Window::Window()
         throw Exception("Cannot obtain screen resolution");
     }
 
+    VC_RECT_T dstRect, srcRect;
+
     dstRect.x = 0;
     dstRect.y = 0;
     dstRect.width = clientWidth;
@@ -235,7 +236,7 @@ Window::Window()
     srcRect.height = clientHeight << 16;
 
     dispmanDisplay = vc_dispmanx_display_open(0);
-    dispmanUpdate = vc_dispmanx_update_start(0);
+    DISPMANX_UPDATE_HANDLE_T dispmanUpdate = vc_dispmanx_update_start(0);
 
 #ifdef TFT_OUTPUT
     uint32_t image;
@@ -291,6 +292,7 @@ Window::Window()
     dispmanElement = vc_dispmanx_element_add(dispmanUpdate, dispmanDisplay, 0, &dstRect, 0, &srcRect,
         DISPMANX_PROTECTION_NONE, 0, 0, (DISPMANX_TRANSFORM_T)0);
 
+    static EGL_DISPMANX_WINDOW_T nativeWindow;
     nativeWindow.element = dispmanElement;
     nativeWindow.width = clientWidth;
     nativeWindow.height = clientHeight;
@@ -318,6 +320,7 @@ Window::Window()
     clientHeight = GetSystemMetrics(SM_CYSCREEN);
 #endif
 
+    WNDCLASSEX wcex;
     hInstance = GetModuleHandle(NULL);
     wcex.cbSize = sizeof(WNDCLASSEX);
     wcex.style = CS_OWNDC;
@@ -371,6 +374,7 @@ Window::Window()
         throw Exception("Cannot obtain device context handle");
     }
 
+    PIXELFORMATDESCRIPTOR pfd;
     memset(&pfd, 0, sizeof(pfd));
     pfd.nSize = sizeof(pfd);
     pfd.nVersion = 1;
@@ -380,7 +384,7 @@ Window::Window()
     pfd.cDepthBits = 16;
     pfd.iLayerType = PFD_MAIN_PLANE;
 
-    pixelFormat = ChoosePixelFormat(hDC, &pfd);
+    GLuint pixelFormat = ChoosePixelFormat(hDC, &pfd);
     if (!pixelFormat) {
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
@@ -413,6 +417,9 @@ Window::Window()
         close(fbFd);
 #endif
         eglDestroyContext(eglDisplay, eglContext);
+        dispmanUpdate = vc_dispmanx_update_start(0);
+        vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
+        vs_dispmanx_update_submit_sync(dispmanUpdate);
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
@@ -436,18 +443,20 @@ Window::Window()
         0
     };
 
-    wglCreateContextAttribsARB = reinterpret_cast <PFNWGLCREATECONTEXTATTRIBSARBPROC> (wglGetProcAddress("wglCreateContextAttribsARB"));
-    if (wglCreateContextAttribsARB == NULL) {
+    PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
+    try {
+        initGLFunction(wglCreateContextAttribsARB, "wglCreateContextAttribsARB");
+    } catch (exception e) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw Exception("Cannot initialize wglCreateContextAttribsARB function");
+        throw e;
     }
 
-    HGLRC hRC3 = wglCreateContextAttribsARB(hDC, hRC, attribs);
-    if (hRC3 == NULL) {
+    HGLRC hRC2 = wglCreateContextAttribsARB(hDC, hRC, attribs);
+    if (hRC2 == NULL) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
@@ -458,16 +467,16 @@ Window::Window()
 
     wglDeleteContext(hRC);
 
-    if (!wglMakeCurrent(hDC, hRC3)) {
+    if (!wglMakeCurrent(hDC, hRC2)) {
         wglMakeCurrent(NULL, NULL);
-        wglDeleteContext(hRC3);
+        wglDeleteContext(hRC2);
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
         throw Exception("Cannot attach OpenGL rendering context to thread");
     }
 
-    hRC = hRC3;
+    hRC = hRC2;
     events = new queue<int32_t>();
 #endif
 }
@@ -483,6 +492,9 @@ Window::~Window()
     close(fbFd);
 #endif
     eglDestroyContext(eglDisplay, eglContext);
+    DISPMANX_UPDATE_HANDLE_T dispmanUpdate = vc_dispmanx_update_start(0);
+    vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
+    vs_dispmanx_update_submit_sync(dispmanUpdate);
     vc_dispmanx_display_close(dispmanDisplay);
     eglTerminate(eglDisplay);
     SDL_Quit();
@@ -578,20 +590,6 @@ void Window::GetClientSize(uint32_t &width, uint32_t &height)
     width = clientWidth;
     height = clientHeight;
 }
-
-#ifdef _WIN32
-template <typename FunctionType>
-void initGLFunction(FunctionType &func, string funcName)
-{
-    ostringstream oss;
-    if (func == NULL) {
-        if ((func = reinterpret_cast <FunctionType> (wglGetProcAddress(funcName.c_str()))) == NULL) {
-            oss << "Cannot initialize " << funcName << " function";
-            throw Exception(oss.str());
-        }
-    }
-}
-#endif
 
 class ShaderProgram
 {
