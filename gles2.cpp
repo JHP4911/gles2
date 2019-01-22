@@ -979,17 +979,6 @@ void signalHandler(int sigNum) {
         quit = true;
     }
 }
-#else
-PFNGLBINDBUFFERPROC glBindBuffer = NULL;
-PFNGLBUFFERDATAPROC glBufferData = NULL;
-PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
-PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
-PFNGLGENBUFFERSPROC glGenBuffers = NULL;
-PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation = NULL;
-PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
-PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv = NULL;
-PFNGLUSEPROGRAMPROC glUseProgram = NULL;
-PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
 #endif
 
 #ifndef _WIN32
@@ -1007,6 +996,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         window = &Window::Initialize();
 
 #ifdef _WIN32
+        PFNGLBINDBUFFERPROC glBindBuffer = NULL;
+        PFNGLBUFFERDATAPROC glBufferData = NULL;
+        PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
+        PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
+        PFNGLGENBUFFERSPROC glGenBuffers = NULL;
+        PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation = NULL;
+        PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
+        PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv = NULL;
+        PFNGLUSEPROGRAMPROC glUseProgram = NULL;
+        PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
+
         initGLFunction(glBindBuffer, "glBindBuffer");
         initGLFunction(glBufferData, "glBufferData");
         initGLFunction(glDisableVertexAttribArray, "glDisableVertexAttribArray");
@@ -1070,7 +1070,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         GLuint colorBuffer;
         glGenBuffers(1, &colorBuffer);
         glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertexData), colorData, GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(colorData), colorData, GL_STATIC_DRAW);
 
         while (!quit) {
             Matrix rotation = Matrix::GenerateRotation(angle, ROTATION_AXIS_Z);
