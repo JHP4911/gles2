@@ -308,6 +308,9 @@ Window::Window()
         close(fbFd);
 #endif
         eglDestroyContext(eglDisplay, eglContext);
+        dispmanUpdate = vc_dispmanx_update_start(0);
+        vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
+        vc_dispmanx_update_submit_sync(dispmanUpdate);
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
@@ -421,7 +424,7 @@ Window::Window()
         eglDestroyContext(eglDisplay, eglContext);
         dispmanUpdate = vc_dispmanx_update_start(0);
         vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
-        vs_dispmanx_update_submit_sync(dispmanUpdate);
+        vc_dispmanx_update_submit_sync(dispmanUpdate);
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
@@ -496,7 +499,7 @@ Window::~Window()
     eglDestroyContext(eglDisplay, eglContext);
     DISPMANX_UPDATE_HANDLE_T dispmanUpdate = vc_dispmanx_update_start(0);
     vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
-    vs_dispmanx_update_submit_sync(dispmanUpdate);
+    vc_dispmanx_update_submit_sync(dispmanUpdate);
     vc_dispmanx_display_close(dispmanDisplay);
     eglTerminate(eglDisplay);
     SDL_Quit();
