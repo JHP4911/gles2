@@ -50,6 +50,8 @@ using std::min;
 #define WINDOW_EVENT_WINDOW_CLOSED 2
 #define WINDOW_EVENT_APPLICATION_TERMINATED 3
 
+#define TEXTURE_SIZE 256
+
 class Exception : public exception
 {
     public:
@@ -979,17 +981,6 @@ void signalHandler(int sigNum) {
         quit = true;
     }
 }
-#else
-PFNGLBINDBUFFERPROC glBindBuffer = NULL;
-PFNGLBUFFERDATAPROC glBufferData = NULL;
-PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
-PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
-PFNGLGENBUFFERSPROC glGenBuffers = NULL;
-PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation = NULL;
-PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
-PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv = NULL;
-PFNGLUSEPROGRAMPROC glUseProgram = NULL;
-PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
 #endif
 
 #ifndef _WIN32
@@ -999,6 +990,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #endif
 {
     Window *window = NULL;
+    uint8_t *textureData = NULL;
 #ifndef _WIN32
     signal(SIGINT, signalHandler);
 #endif
@@ -1007,6 +999,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         window = &Window::Initialize();
 
 #ifdef _WIN32
+        PFNGLBINDBUFFERPROC glBindBuffer = NULL;
+        PFNGLBUFFERDATAPROC glBufferData = NULL;
+        PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
+        PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
+        PFNGLGENBUFFERSPROC glGenBuffers = NULL;
+        PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation = NULL;
+        PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
+        PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv = NULL;
+        PFNGLUSEPROGRAMPROC glUseProgram = NULL;
+        PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
+        PFNGLACTIVETEXTUREPROC glActiveTexture = NULL;
+        PFNGLUNIFORM1IPROC glUniform1i = NULL;
+
         initGLFunction(glBindBuffer, "glBindBuffer");
         initGLFunction(glBufferData, "glBufferData");
         initGLFunction(glDisableVertexAttribArray, "glDisableVertexAttribArray");
@@ -1017,32 +1022,45 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         initGLFunction(glUniformMatrix4fv, "glUniformMatrix4fv");
         initGLFunction(glUseProgram, "glUseProgram");
         initGLFunction(glVertexAttribPointer, "glVertexAttribPointer");
+        initGLFunction(glActiveTexture, "glActiveTexture");
+        initGLFunction(glUniform1i, "glUniform1i");
 #endif
 
         char vertexShaderCode[] =
+            "uniform mat4 rotationMatrix;                               \n"
             "attribute vec3 vertexPosition;                             \n"
             "attribute vec3 vertexColor;                                \n"
-            "varying vec3 fragmentColor;                                \n"
-            "uniform mat4 rotationMatrix;                               \n"
+            "attribute vec2 vertexTexCoord;                             \n"
+            "varying vec3 varyingColor;                                 \n"
+            "varying vec2 varyingTexCoord;                              \n"
             "                                                           \n"
             "void main()                                                \n"
             "{                                                          \n"
             "   gl_Position = rotationMatrix * vec4(vertexPosition, 1); \n"
-            "   fragmentColor = vertexColor;                            \n"
+            "   varyingColor = vertexColor;                             \n"
+            "   varyingTexCoord = vertexTexCoord;                       \n"
             "}                                                          \n";
 
         char fragmentShaderCode[] =
-            "varying vec3 fragmentColor;                                \n"
+#ifndef _WIN32
+            "precision mediump float;                                   \n"
+#endif
+            "uniform sampler2D texture;                                 \n"
+            "varying vec3 varyingColor;                                 \n"
+            "varying vec2 varyingTexCoord;                              \n"
             "                                                           \n"
             "void main()                                                \n"
             "{                                                          \n"
-            "   gl_FragColor = vec4(fragmentColor, 1);                  \n"
+            "   gl_FragColor = vec4(varyingColor, 1) *                  \n"
+            "                  texture2D(texture, varyingTexCoord);     \n"
             "}                                                          \n";
 
         ShaderProgram program(vertexShaderCode, fragmentShaderCode, GL_SHADER_CODE_FROM_STRING);
         GLuint vertPositionAttribute = glGetAttribLocation(program.GetProgram(), "vertexPosition");
         GLuint vertColorAttribute = glGetAttribLocation(program.GetProgram(), "vertexColor");
+        GLuint vertTexCoordAttribute = glGetAttribLocation(program.GetProgram(), "vertexTexCoord");
         GLuint rotMatrixUniform = glGetUniformLocation(program.GetProgram(), "rotationMatrix");
+        GLuint textureUniform = glGetUniformLocation(program.GetProgram(), "texture");
 
         GLfloat angle = 0.0f;
 
@@ -1058,6 +1076,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
            0.0f, 0.0f, 1.0f
         };
 
+        textureData = new uint8_t[TEXTURE_SIZE * TEXTURE_SIZE * 3];
+        for (uint32_t i = 0; i < TEXTURE_SIZE * TEXTURE_SIZE * 3;) {
+            uint8_t pixel = ((i / 3) % TEXTURE_SIZE) | ((i / 3) / TEXTURE_SIZE);
+            textureData[i++] = pixel;
+            textureData[i++] = pixel;
+            textureData[i++] = pixel;
+        }
+
+        GLfloat texCoordData[] = {
+            0.0f, 0.0f,
+            1.0f, 0.0f,
+            0.5f, 1.0f
+        };
+
         uint32_t width, height;
         window->GetClientSize(width, height);
         glViewport(0, 0, width, height);
@@ -1070,7 +1102,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         GLuint colorBuffer;
         glGenBuffers(1, &colorBuffer);
         glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertexData), colorData, GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(colorData), colorData, GL_STATIC_DRAW);
+
+        GLuint texCoordBuffer;
+        glGenBuffers(1, &texCoordBuffer);
+        glBindBuffer(GL_ARRAY_BUFFER, texCoordBuffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(texCoordData), texCoordData, GL_STATIC_DRAW);
+
+        GLuint texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TEXTURE_SIZE, TEXTURE_SIZE, 0, GL_RGB, GL_UNSIGNED_BYTE, textureData);
 
         while (!quit) {
             Matrix rotation = Matrix::GenerateRotation(angle, ROTATION_AXIS_Z);
@@ -1082,19 +1126,28 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     glUseProgram(program.GetProgram());
                     glUniformMatrix4fv(rotMatrixUniform, 1, GL_FALSE, rotation.GetData());
 
+                    glActiveTexture(GL_TEXTURE0);
+                    glBindTexture(GL_TEXTURE_2D, texture);
+                    glUniform1i(textureUniform, 0);
+
                     glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-                    glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
+                    glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
 
                     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-                    glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
+                    glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
+
+                    glBindBuffer(GL_ARRAY_BUFFER, texCoordBuffer);
+                    glVertexAttribPointer(vertTexCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
 
                     glEnableVertexAttribArray(vertColorAttribute);
                     glEnableVertexAttribArray(vertPositionAttribute);
+                    glEnableVertexAttribArray(vertTexCoordAttribute);
 
                     glDrawArrays(GL_TRIANGLES, 0, 3);
 
-                    glDisableVertexAttribArray(vertPositionAttribute);
                     glDisableVertexAttribArray(vertColorAttribute);
+                    glDisableVertexAttribArray(vertPositionAttribute);
+                    glDisableVertexAttribArray(vertTexCoordAttribute);
 
                     window->SwapBuffers();
 
@@ -1110,7 +1163,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     break;
             }
         }
+
+        delete [] textureData;
     } catch (exception &e) {
+        if (textureData != NULL) {
+            delete [] textureData;
+        }
         #ifndef _WIN32
             cout << e.what() << endl;
         #else
