@@ -1133,23 +1133,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     glBindTexture(GL_TEXTURE_2D, texture);
                     glUniform1i(textureUniform, 0);
 
-                    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-                    glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
-
+                    glEnableVertexAttribArray(vertPositionAttribute);
                     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
                     glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
 
+                    glEnableVertexAttribArray(vertColorAttribute);
+                    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+                    glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
+
+                    glEnableVertexAttribArray(vertTexCoordAttribute);
                     glBindBuffer(GL_ARRAY_BUFFER, texCoordBuffer);
                     glVertexAttribPointer(vertTexCoordAttribute, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
 
-                    glEnableVertexAttribArray(vertColorAttribute);
-                    glEnableVertexAttribArray(vertPositionAttribute);
-                    glEnableVertexAttribArray(vertTexCoordAttribute);
 
                     glDrawArrays(GL_TRIANGLES, 0, 3);
 
-                    glDisableVertexAttribArray(vertColorAttribute);
                     glDisableVertexAttribArray(vertPositionAttribute);
+                    glDisableVertexAttribArray(vertColorAttribute);
                     glDisableVertexAttribArray(vertTexCoordAttribute);
 
                     window->SwapBuffers();
