@@ -17,9 +17,9 @@
 #include <queue>
 #include <sstream>
 #include <windows.h>
-#include "GL/gl.h"
+#include <GL/gl.h>
+#include "GL/glext.h"
 #include "GL/wglext.h"
-#include "GL3/gl3.h"
 #endif
 
 #ifndef _WIN32
