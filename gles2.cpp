@@ -1085,14 +1085,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     glUseProgram(program.GetProgram());
                     glUniformMatrix4fv(rotMatrixUniform, 1, GL_FALSE, rotation.GetData());
 
-                    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-                    glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
-
+                    glEnableVertexAttribArray(vertPositionAttribute);
                     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-                    glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (void *)0);
+                    glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
 
                     glEnableVertexAttribArray(vertColorAttribute);
-                    glEnableVertexAttribArray(vertPositionAttribute);
+                    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+                    glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
 
                     glDrawArrays(GL_TRIANGLES, 0, 3);
 
