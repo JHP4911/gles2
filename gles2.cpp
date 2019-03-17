@@ -701,7 +701,7 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, GLenum srcType, GLenum s
     ifstream file;
     switch (srcType) {
         case GL_SHADER_CODE_FROM_FILE:
-            file.open(shaderSrc);
+            file.open(shaderSrc, ifstream::binary);
             if (!file.is_open()) {
                 return 0;
             }
