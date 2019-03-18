@@ -449,7 +449,7 @@ Window::Window()
     PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
     try {
         initGLFunction(wglCreateContextAttribsARB, "wglCreateContextAttribsARB");
-    } catch (exception e) {
+    } catch (Exception e) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
