@@ -1233,60 +1233,60 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
 #endif
 
     ifstream file;
-    char buffer[256];
+    uint16_t buffer[256];
     file.open(fontSrc, ifstream::binary);
     if (!file.is_open()) {
         throw Exception("Cannot open font file");
     }
-    file.read(buffer, 4);
-    if ((file.rdstate() & ifstream::eofbit) || string(buffer, 4) != "FONT") {
+    file.read((char *)buffer, 4);
+    if ((file.rdstate() & ifstream::eofbit) || string((char *)buffer, 4) != "FONT") {
         file.close();
         throw Exception("Cannot load font file, wrong file format");
     }
-    file.read(buffer, sizeof(uint8_t));
+    file.read((char *)buffer, sizeof(uint8_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
         throw Exception("Cannot load font file, wrong file format");
     }
     uint8_t length = *((uint8_t *)buffer);
-    file.read(buffer, length * sizeof(uint8_t));
+    file.read((char *)buffer, length * sizeof(uint8_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
         throw Exception("Cannot load font file, wrong file format");
     }
-    name = string(buffer, length * sizeof(uint8_t));
-    file.read(buffer, sizeof(uint8_t));
+    name = string((char *)buffer, length * sizeof(uint8_t));
+    file.read((char *)buffer, sizeof(uint8_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
         throw Exception("Cannot load font file, wrong file format");
     }
     uint8_t height = *((uint8_t *)buffer);
-    file.read(buffer, sizeof(uint16_t));
+    file.read((char *)buffer, sizeof(uint16_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
         throw Exception("Cannot load font file, wrong file format");
     }
-    uint16_t chars = *((uint16_t *)buffer);
+    uint16_t chars = *buffer;
     for (uint16_t i = 0; i < chars; i++) {
-        file.read(buffer, sizeof(uint8_t));
+        file.read((char *)buffer, sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
         }
         uint8_t size = *((uint8_t *)buffer);
-        file.read(buffer, size * sizeof(uint8_t));
+        file.read((char *)buffer, size * sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
         }
-        string code = string(buffer, size * sizeof(uint8_t));
-        file.read(buffer, sizeof(uint8_t));
+        string code = string((char *)buffer, size * sizeof(uint8_t));
+        file.read((char *)buffer, sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
         }
         GLfloat width = *((uint8_t *)buffer) / (GLfloat)height;
-        file.read(buffer, 2 * sizeof(uint8_t));
+        file.read((char *)buffer, 2 * sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
@@ -1295,36 +1295,36 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
             ((int8_t *)buffer)[0] / (GLfloat)height,
             ((int8_t *)buffer)[1] / (GLfloat)height
         };
-        file.read(buffer, 4 * sizeof(uint16_t));
+        file.read((char *)buffer, 4 * sizeof(uint16_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
         }
         TextureRect textureRect = {
-            ((uint16_t *)buffer)[0] / (GLfloat)texture.GetWidth(),
-            ((uint16_t *)buffer)[1] / (GLfloat)texture.GetHeight(),
-            ((uint16_t *)buffer)[2] / (GLfloat)texture.GetWidth(),
-            ((uint16_t *)buffer)[3] / (GLfloat)texture.GetHeight()
+            buffer[0] / (GLfloat)texture.GetWidth(),
+            buffer[1] / (GLfloat)texture.GetHeight(),
+            buffer[2] / (GLfloat)texture.GetWidth(),
+            buffer[3] / (GLfloat)texture.GetHeight()
         };
         CharSize dimensions = {
-            ((uint16_t *)buffer)[2] / (GLfloat)height,
-            ((uint16_t *)buffer)[3] / (GLfloat)height
+            buffer[2] / (GLfloat)height,
+            buffer[3] / (GLfloat)height
         };
         FontChar fontChar(code, width, offset, textureRect, dimensions);
-        file.read(buffer, sizeof(uint16_t));
+        file.read((char *)buffer, sizeof(uint16_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
         }
-        uint16_t advances = *((uint16_t *)buffer);
+        uint16_t advances = *buffer;
         for (uint16_t j = 0; j < advances; j++) {
-            file.read(buffer, sizeof(uint16_t));
+            file.read((char *)buffer, sizeof(uint16_t));
             if (file.rdstate() & ifstream::eofbit) {
                 file.close();
                 throw Exception("Cannot load font file, wrong file format");
             }
-            uint16_t character = *((uint16_t *)buffer);
-            file.read(buffer, sizeof(uint8_t));
+            uint16_t character = *buffer;
+            file.read((char *)buffer, sizeof(uint8_t));
             if (file.rdstate() & ifstream::eofbit) {
                 file.close();
                 throw Exception("Cannot load font file, wrong file format");
@@ -1559,7 +1559,7 @@ PFNGLACTIVETEXTUREPROC Background::glActiveTexture = NULL;
 #endif
 
 Background::Background(Texture &backgroundTexture, ShaderProgram &backgroundShader, Texture &particleTexture, ShaderProgram &particleShader, GLfloat screenRatio) :
-    backgroundTexture(&backgroundTexture), backgroundShader(&backgroundShader), particleTexture(&particleTexture), particleShader(&particleShader), screenRatio(screenRatio)
+    backgroundTexture(&backgroundTexture), particleTexture(&particleTexture), backgroundShader(&backgroundShader), particleShader(&particleShader), screenRatio(screenRatio)
 {
 #ifdef _WIN32
     initGLFunction(glGenBuffers, "glGenBuffers");
