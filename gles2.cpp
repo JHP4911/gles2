@@ -621,6 +621,7 @@ class ShaderProgram
         static PFNGLDELETESHADERPROC glDeleteShader;
         static PFNGLGETPROGRAMIVPROC glGetProgramiv;
         static PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog;
+        static PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog;
         static PFNGLGETSHADERIVPROC glGetShaderiv;
         static PFNGLLINKPROGRAMPROC glLinkProgram;
         static PFNGLSHADERSOURCEPROC glShaderSource;
@@ -640,6 +641,7 @@ PFNGLDELETEPROGRAMPROC ShaderProgram::glDeleteProgram = NULL;
 PFNGLDELETESHADERPROC ShaderProgram::glDeleteShader = NULL;
 PFNGLGETPROGRAMIVPROC ShaderProgram::glGetProgramiv = NULL;
 PFNGLGETSHADERINFOLOGPROC ShaderProgram::glGetShaderInfoLog = NULL;
+PFNGLGETPROGRAMINFOLOGPROC ShaderProgram::glGetProgramInfoLog = NULL;
 PFNGLGETSHADERIVPROC ShaderProgram::glGetShaderiv = NULL;
 PFNGLLINKPROGRAMPROC ShaderProgram::glLinkProgram = NULL;
 PFNGLSHADERSOURCEPROC ShaderProgram::glShaderSource = NULL;
@@ -655,6 +657,7 @@ ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentSh
     initGLFunction(glDeleteProgram, "glDeleteProgram");
     initGLFunction(glDeleteShader, "glDeleteShader");
     initGLFunction(glGetProgramiv, "glGetProgramiv");
+    initGLFunction(glGetProgramInfoLog, "glGetProgramInfoLog");
     initGLFunction(glLinkProgram, "glLinkProgram");
 #endif
 
@@ -678,6 +681,20 @@ ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentSh
     glLinkProgram(program);
     glGetProgramiv(program, GL_LINK_STATUS, &isLinked);
     if (!isLinked) {
+        GLint infoLen = 0;
+        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLen);
+        if (infoLen > 1) {
+            char *infoLog = new char[infoLen];
+            glGetProgramInfoLog(program, infoLen, NULL, infoLog);
+#ifndef _WIN32
+            cout << "Shader linker error:" << endl << infoLog << endl;
+#else
+#ifndef FORCE_FULLSCREEN
+            MessageBox(NULL, infoLog, "Shader linker error", MB_ICONEXCLAMATION);
+#endif
+#endif
+            delete[] infoLog;
+        }
         glDeleteProgram(program);
         glDeleteShader(fragmentShader);
         glDeleteShader(vertexShader);
