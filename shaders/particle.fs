@@ -1,4 +1,4 @@
-#version 120
+#version 100
 precision mediump float;
 uniform sampler2D texture;
 uniform float opacity;
