@@ -7,7 +7,7 @@ ifeq ($(TFT_OUTPUT), 1)
 endif
 
 all:
-	g++ $(FLAGS) $(INCLUDES) $(LIBS) -o gles2 gles2.cpp
+	g++ $(FLAGS) $(INCLUDES) $(LIBS) -o gles2 gles2.cpp lodepng/lodepng.cpp
 
 clean:
 	rm ./gles2

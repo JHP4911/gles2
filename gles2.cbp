@@ -34,6 +34,7 @@
 			<Add library="opengl32" />
 		</Linker>
 		<Unit filename="gles2.cpp" />
+		<Unit filename="lodepng/lodepng.cpp" />
 		<Extensions>
 			<code_completion />
 			<envvars />

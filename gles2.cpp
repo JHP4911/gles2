@@ -1,5 +1,6 @@
 #include <fstream>
 #include <cmath>
+#include "lodepng/lodepng.h"
 #ifndef _WIN32
 #include <iostream>
 #ifdef TFT_OUTPUT
@@ -34,6 +35,7 @@ using std::ios;
 using std::ifstream;
 using std::string;
 using std::exception;
+using std::vector;
 #ifndef _MSC_VER
 using std::min;
 #endif
@@ -42,13 +44,18 @@ using std::min;
 #define ROTATION_AXIS_Y 1
 #define ROTATION_AXIS_Z 2
 
-#define GL_SHADER_CODE_FROM_STRING 0
-#define GL_SHADER_CODE_FROM_FILE 1
+#define GL_SHADER_CODE_FROM_STRING 0x0
+#define GL_SHADER_CODE_FROM_FILE 0x1
+
+#define GL_FONT_TEXT_VERTICAL_CENTER 0x1
+#define GL_FONT_TEXT_HORIZONTAL_CENTER 0x2
 
 #define WINDOW_EVENT_NO_EVENT 0
 #define WINDOW_EVENT_ESC_KEY_PRESSED 1
 #define WINDOW_EVENT_WINDOW_CLOSED 2
 #define WINDOW_EVENT_APPLICATION_TERMINATED 3
+
+#define NUMBER_OF_PARTICLES 16
 
 class Exception : public exception
 {
@@ -598,7 +605,7 @@ class ShaderProgram
 {
     public:
         ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, GLenum srcType);
-        ~ShaderProgram();
+        virtual ~ShaderProgram();
 
         GLuint GetProgram();
     private:
@@ -715,7 +722,7 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, GLenum srcType, GLenum s
             length = (GLint)strlen(code);
             break;
         default:
-            throw Exception("Cannot load shader code, unknown source type");
+            return 0;
     }
 
 #ifdef _WIN32
@@ -753,6 +760,66 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, GLenum srcType, GLenum s
     return shader;
 }
 
+class Texture
+{
+    public:
+        Texture(const char *textureSrc);
+        Texture(GLuint width, GLuint height, GLchar *data);
+        virtual ~Texture();
+
+        GLuint GetTexture();
+        GLuint GetWidth();
+        GLuint GetHeight();
+    private:
+        GLuint texture;
+        GLuint width;
+        GLuint height;
+
+        Texture(const Texture &source);
+        Texture &operator=(const Texture &source);
+};
+
+Texture::Texture(const char *textureSrc)
+{
+    vector<uint8_t> data;
+    GLuint error = lodepng::decode(data, width, height, textureSrc);
+    if (error) {
+        throw Exception("Cannot load texture");
+    }
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, &(data[0]));
+}
+
+Texture::Texture(GLuint width, GLuint height, GLchar *data) :
+    width(width), height(height)
+{
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+}
+
+Texture::~Texture()
+{
+    glDeleteTextures(1, &texture);
+}
+
+GLuint Texture::GetTexture() {
+    return texture;
+}
+
+GLuint Texture::GetWidth() {
+    return width;
+}
+
+GLuint Texture::GetHeight() {
+    return height;
+}
+
 class Matrix
 {
     public:
@@ -760,7 +827,7 @@ class Matrix
         Matrix(const Matrix &source);
         Matrix(GLuint width, GLuint height);
         Matrix(GLuint width, GLuint height, GLfloat *matrixData);
-        ~Matrix();
+        virtual ~Matrix();
 
         GLfloat *GetData();
 
@@ -774,7 +841,8 @@ class Matrix
         Matrix &operator=(const GLfloat *sourceData);
 
         static Matrix GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane);
-        static Matrix GenerateTranslation(GLfloat x, GLfloat y, GLfloat z);
+        static Matrix GeneratePosition(GLfloat x, GLfloat y, GLfloat z);
+        static Matrix GenerateScale(GLfloat x, GLfloat y, GLfloat z);
         static Matrix GenerateRotation(GLfloat angle, GLuint axis);
     private:
         GLfloat *data;
@@ -835,7 +903,7 @@ Matrix Matrix::GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPan
     return result;
 }
 
-Matrix Matrix::GenerateTranslation(GLfloat x, GLfloat y, GLfloat z)
+Matrix Matrix::GeneratePosition(GLfloat x, GLfloat y, GLfloat z)
 {
     Matrix result(4, 4);
     GLfloat *data = result.GetData();
@@ -850,14 +918,27 @@ Matrix Matrix::GenerateTranslation(GLfloat x, GLfloat y, GLfloat z)
     return result;
 }
 
+Matrix Matrix::GenerateScale(GLfloat x, GLfloat y, GLfloat z)
+{
+    Matrix result(4, 4);
+    GLfloat *data = result.GetData();
+
+    data[0] = x;
+    data[5] = y;
+    data[10] = z;
+    data[15] = 1.0f;
+
+    return result;
+}
+
 Matrix Matrix::GenerateRotation(GLfloat angle, GLuint axis)
 {
     Matrix result(4, 4);
     GLfloat *data = result.GetData();
 
     data[15] = 1.0f;
-    GLfloat sinAngle = (GLfloat)sin(angle * M_PI / 180.0f);
-    GLfloat cosAngle = (GLfloat)cos(angle * M_PI / 180.0f);
+    GLfloat sinAngle = (GLfloat)sin(angle);
+    GLfloat cosAngle = (GLfloat)cos(angle);
 
     if (axis == ROTATION_AXIS_X) {
         data[0] = 1.0f;
@@ -974,6 +1055,669 @@ void Matrix::SetSize(GLuint width, GLuint height)
     delete [] oldData;
 }
 
+struct CharAdvance
+{
+    uint16_t character;
+    GLfloat advance;
+};
+
+struct CharOffset
+{
+    GLfloat left, top;
+};
+
+struct CharSize
+{
+    GLfloat width, height;
+};
+
+struct TextureRect
+{
+    GLfloat left, top, width, height;
+};
+
+class FontChar
+{
+    public:
+        FontChar(string code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size);
+        FontChar(const FontChar &source);
+        FontChar &operator=(const FontChar &source);
+
+        string GetCode();
+        GLfloat GetWidth();
+        CharOffset GetOffset();
+        TextureRect GetRect();
+        CharSize GetSize();
+        void AddAdvance(CharAdvance advance);
+        GLfloat GetAdvance(uint16_t character);
+    private:
+        string code;
+        GLfloat width;
+        CharOffset offset;
+        TextureRect textureRect;
+        CharSize size;
+        vector<CharAdvance> advances;
+};
+
+FontChar::FontChar(string code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size) :
+    code(code), width(width), offset(offset), textureRect(rect), size(size)
+{
+}
+
+FontChar::FontChar(const FontChar &source) :
+    code(source.code), width(source.width), offset(source.offset), textureRect(source.textureRect), size(source.size), advances(source.advances)
+{
+}
+
+FontChar &FontChar::operator=(const FontChar &source)
+{
+    code = source.code;
+    width = source.width;
+    offset = source.offset;
+    textureRect = source.textureRect;
+    size = source.size;
+    advances = source.advances;
+    return *this;
+}
+
+string FontChar::GetCode()
+{
+    return code;
+}
+
+GLfloat FontChar::GetWidth()
+{
+    return width;
+}
+
+CharOffset FontChar::GetOffset()
+{
+    return offset;
+}
+
+TextureRect FontChar::GetRect()
+{
+    return textureRect;
+}
+
+CharSize FontChar::GetSize()
+{
+    return size;
+}
+
+GLfloat FontChar::GetAdvance(uint16_t character)
+{
+    for (uint32_t i = 0; i < advances.size(); i++) {
+        if (advances[i].character == character) {
+            return advances[i].advance;
+        }
+    }
+    return 0;
+}
+
+void FontChar::AddAdvance(CharAdvance advance) {
+    advances.push_back(advance);
+}
+
+class Font
+{
+    public:
+        Font(const char *fontSrc, Texture &texture, ShaderProgram &shader);
+        virtual ~Font();
+
+        void RenderText(string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType);
+    private:
+        string name;
+        Texture *texture;
+        ShaderProgram *shader;
+        GLuint vertexBuffer, textureBuffer, positionAttribute, textureAttribute, positionUniform, textureUniform, opacityUniform;
+        vector<FontChar> font;
+#ifdef _WIN32
+        static PFNGLGENBUFFERSPROC glGenBuffers;
+        static PFNGLDELETEBUFFERSPROC glDeleteBuffers;
+        static PFNGLBINDBUFFERPROC glBindBuffer;
+        static PFNGLBUFFERDATAPROC glBufferData;
+        static PFNGLUSEPROGRAMPROC glUseProgram;
+        static PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
+        static PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
+        static PFNGLUNIFORM1IPROC glUniform1i;
+        static PFNGLUNIFORM1FPROC glUniform1f;
+        static PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
+        static PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
+        static PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
+        static PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
+        static PFNGLACTIVETEXTUREPROC glActiveTexture;
+#endif
+
+        Font(const Font &source);
+        Font &operator=(const Font &source);
+        void AddCharacter(FontChar fontChar);
+        FontChar GetCharacter(string text, uint32_t offset, uint16_t &index);
+};
+
+#ifdef _WIN32
+PFNGLGENBUFFERSPROC Font::glGenBuffers = NULL;
+PFNGLDELETEBUFFERSPROC Font::glDeleteBuffers = NULL;
+PFNGLBINDBUFFERPROC Font::glBindBuffer = NULL;
+PFNGLBUFFERDATAPROC Font::glBufferData = NULL;
+PFNGLUSEPROGRAMPROC Font::glUseProgram = NULL;
+PFNGLENABLEVERTEXATTRIBARRAYPROC Font::glEnableVertexAttribArray = NULL;
+PFNGLDISABLEVERTEXATTRIBARRAYPROC Font::glDisableVertexAttribArray = NULL;
+PFNGLUNIFORM1IPROC Font::glUniform1i = NULL;
+PFNGLUNIFORM1FPROC Font::glUniform1f = NULL;
+PFNGLUNIFORMMATRIX4FVPROC Font::glUniformMatrix4fv = NULL;
+PFNGLVERTEXATTRIBPOINTERPROC Font::glVertexAttribPointer = NULL;
+PFNGLGETATTRIBLOCATIONPROC Font::glGetAttribLocation = NULL;
+PFNGLGETUNIFORMLOCATIONPROC Font::glGetUniformLocation = NULL;
+PFNGLACTIVETEXTUREPROC Font::glActiveTexture = NULL;
+#endif
+
+Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
+    texture(&texture), shader(&shader)
+{
+#ifdef _WIN32
+    initGLFunction(glGenBuffers, "glGenBuffers");
+    initGLFunction(glDeleteBuffers, "glDeleteBuffers");
+    initGLFunction(glBindBuffer, "glBindBuffer");
+    initGLFunction(glBufferData, "glBufferData");
+    initGLFunction(glUseProgram, "glUseProgram");
+    initGLFunction(glEnableVertexAttribArray, "glEnableVertexAttribArray");
+    initGLFunction(glDisableVertexAttribArray, "glDisableVertexAttribArray");
+    initGLFunction(glUniform1i, "glUniform1i");
+    initGLFunction(glUniform1f, "glUniform1f");
+    initGLFunction(glUniformMatrix4fv, "glUniformMatrix4fv");
+    initGLFunction(glVertexAttribPointer, "glVertexAttribPointer");
+    initGLFunction(glGetAttribLocation, "glGetAttribLocation");
+    initGLFunction(glGetUniformLocation, "glGetUniformLocation");
+    initGLFunction(glActiveTexture, "glActiveTexture");
+#endif
+
+    ifstream file;
+    char buffer[256];
+    file.open(fontSrc, ifstream::binary);
+    if (!file.is_open()) {
+        throw Exception("Cannot open font file");
+    }
+    file.read(buffer, 4);
+    if ((file.rdstate() & ifstream::eofbit) || string(buffer, 4) != "FONT") {
+        file.close();
+        throw Exception("Cannot load font file, wrong file format");
+    }
+    file.read(buffer, sizeof(uint8_t));
+    if (file.rdstate() & ifstream::eofbit) {
+        file.close();
+        throw Exception("Cannot load font file, wrong file format");
+    }
+    uint8_t length = *((uint8_t *)buffer);
+    file.read(buffer, length * sizeof(uint8_t));
+    if (file.rdstate() & ifstream::eofbit) {
+        file.close();
+        throw Exception("Cannot load font file, wrong file format");
+    }
+    name = string(buffer, length * sizeof(uint8_t));
+    file.read(buffer, sizeof(uint8_t));
+    if (file.rdstate() & ifstream::eofbit) {
+        file.close();
+        throw Exception("Cannot load font file, wrong file format");
+    }
+    uint8_t height = *((uint8_t *)buffer);
+    file.read(buffer, sizeof(uint16_t));
+    if (file.rdstate() & ifstream::eofbit) {
+        file.close();
+        throw Exception("Cannot load font file, wrong file format");
+    }
+    uint16_t chars = *((uint16_t *)buffer);
+    for (uint16_t i = 0; i < chars; i++) {
+        file.read(buffer, sizeof(uint8_t));
+        if (file.rdstate() & ifstream::eofbit) {
+            file.close();
+            throw Exception("Cannot load font file, wrong file format");
+        }
+        uint8_t size = *((uint8_t *)buffer);
+        file.read(buffer, size * sizeof(uint8_t));
+        if (file.rdstate() & ifstream::eofbit) {
+            file.close();
+            throw Exception("Cannot load font file, wrong file format");
+        }
+        string code = string(buffer, size * sizeof(uint8_t));
+        file.read(buffer, sizeof(uint8_t));
+        if (file.rdstate() & ifstream::eofbit) {
+            file.close();
+            throw Exception("Cannot load font file, wrong file format");
+        }
+        GLfloat width = *((uint8_t *)buffer) / (GLfloat)height;
+        file.read(buffer, 2 * sizeof(uint8_t));
+        if (file.rdstate() & ifstream::eofbit) {
+            file.close();
+            throw Exception("Cannot load font file, wrong file format");
+        }
+        CharOffset offset = {
+            ((int8_t *)buffer)[0] / (GLfloat)height,
+            ((int8_t *)buffer)[1] / (GLfloat)height
+        };
+        file.read(buffer, 4 * sizeof(uint16_t));
+        if (file.rdstate() & ifstream::eofbit) {
+            file.close();
+            throw Exception("Cannot load font file, wrong file format");
+        }
+        TextureRect textureRect = {
+            ((uint16_t *)buffer)[0] / (GLfloat)texture.GetWidth(),
+            ((uint16_t *)buffer)[1] / (GLfloat)texture.GetHeight(),
+            ((uint16_t *)buffer)[2] / (GLfloat)texture.GetWidth(),
+            ((uint16_t *)buffer)[3] / (GLfloat)texture.GetHeight()
+        };
+        CharSize dimensions = {
+            ((uint16_t *)buffer)[2] / (GLfloat)height,
+            ((uint16_t *)buffer)[3] / (GLfloat)height
+        };
+        FontChar fontChar(code, width, offset, textureRect, dimensions);
+        file.read(buffer, sizeof(uint16_t));
+        if (file.rdstate() & ifstream::eofbit) {
+            file.close();
+            throw Exception("Cannot load font file, wrong file format");
+        }
+        uint16_t advances = *((uint16_t *)buffer);
+        for (uint16_t j = 0; j < advances; j++) {
+            file.read(buffer, sizeof(uint16_t));
+            if (file.rdstate() & ifstream::eofbit) {
+                file.close();
+                throw Exception("Cannot load font file, wrong file format");
+            }
+            uint16_t character = *((uint16_t *)buffer);
+            file.read(buffer, sizeof(uint8_t));
+            if (file.rdstate() & ifstream::eofbit) {
+                file.close();
+                throw Exception("Cannot load font file, wrong file format");
+            }
+            fontChar.AddAdvance({
+                character,
+                *((int8_t *)buffer) / (GLfloat)height
+            });
+        }
+        AddCharacter(fontChar);
+    }
+    file.close();
+
+    positionAttribute = glGetAttribLocation(shader.GetProgram(), "vertexPosition");
+    textureAttribute = glGetAttribLocation(shader.GetProgram(), "vertexTexture");
+    positionUniform = glGetUniformLocation(shader.GetProgram(), "positionMatrix");
+    textureUniform = glGetUniformLocation(shader.GetProgram(), "texture");
+    opacityUniform = glGetUniformLocation(shader.GetProgram(), "opacity");
+
+    glGenBuffers(1, &vertexBuffer);
+
+    try {
+        glGenBuffers(1, &textureBuffer);
+    } catch (Exception e) {
+        glDeleteBuffers(1, &vertexBuffer);
+        throw e;
+    }
+}
+
+Font::~Font()
+{
+    glDeleteBuffers(1, &vertexBuffer);
+    glDeleteBuffers(1, &textureBuffer);
+}
+
+void Font::AddCharacter(FontChar fontChar)
+{
+    uint16_t begin = 0, end = (uint16_t)font.size();
+    while (begin != end) {
+        uint16_t check = (begin + end) >> 1;
+        if (font[check].GetCode() < fontChar.GetCode()) {
+            begin = check + 1;
+        } else {
+            end = check;
+        }
+    }
+    vector<FontChar>::iterator position = font.begin() + begin;
+    font.insert(position, fontChar);
+}
+
+FontChar Font::GetCharacter(string text, uint32_t offset, uint16_t &index) {
+    uint16_t begin = 0, end = (uint16_t)font.size();
+    while (begin != end) {
+        uint16_t check = (begin + end) >> 1;
+        string code = font[check].GetCode();
+        if (code < text.substr(offset, code.size())) {
+            begin = check + 1;
+        }
+        else {
+            end = check;
+        }
+    }
+    if (begin >= font.size()) {
+        begin = 0;
+    }
+    index = begin;
+    return font[begin];
+}
+
+void Font::RenderText(string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType)
+{
+    GLfloat offsetLeft = 0.0f, offsetTop = 0.0f, renderWidth = 0.0f, renderHeight = 0.0f;
+    uint32_t primitives = 0;
+    uint16_t lastCharIndex = 0xFFFF;
+    vector<GLfloat> vertexData, textureData;
+    for (uint32_t i = 0; i < text.length(); i++) {
+        if (text[i] == '\n') {
+            offsetLeft = 0.0f;
+            offsetTop -= height;
+            continue;
+        }
+
+        uint16_t charIndex;
+        FontChar fontChar = GetCharacter(text, i, charIndex);
+        if (lastCharIndex != 0xFFFF) {
+            offsetLeft += fontChar.GetAdvance(lastCharIndex) * height;
+        }
+
+        TextureRect rect = fontChar.GetRect();
+        textureData.push_back(rect.left);
+        textureData.push_back(rect.top);
+        textureData.push_back(rect.left + rect.width);
+        textureData.push_back(rect.top);
+        textureData.push_back(rect.left + rect.width);
+        textureData.push_back(rect.top + rect.height);
+        textureData.push_back(rect.left);
+        textureData.push_back(rect.top);
+        textureData.push_back(rect.left + rect.width);
+        textureData.push_back(rect.top + rect.height);
+        textureData.push_back(rect.left);
+        textureData.push_back(rect.top + rect.height);
+
+        CharSize size = fontChar.GetSize();
+        CharOffset offset = fontChar.GetOffset();
+        vertexData.push_back(offsetLeft + offset.left * height);
+        vertexData.push_back(offsetTop - offset.top * height);
+        vertexData.push_back(0.0f);
+        vertexData.push_back(offsetLeft + (offset.left + size.width) * height);
+        vertexData.push_back(offsetTop - offset.top * height);
+        vertexData.push_back(0.0f);
+        vertexData.push_back(offsetLeft + (offset.left + size.width) * height);
+        vertexData.push_back(offsetTop - (offset.top + size.height) * height);
+        vertexData.push_back(0.0f);
+        vertexData.push_back(offsetLeft + offset.left * height);
+        vertexData.push_back(offsetTop - offset.top * height);
+        vertexData.push_back(0.0f);
+        vertexData.push_back(offsetLeft + (offset.left + size.width) * height);
+        vertexData.push_back(offsetTop - (offset.top + size.height) * height);
+        vertexData.push_back(0.0f);
+        vertexData.push_back(offsetLeft + offset.left * height);
+        vertexData.push_back(offsetTop - (offset.top + size.height) * height);
+        vertexData.push_back(0.0f);
+
+        offsetLeft += fontChar.GetWidth() * height;
+
+        if (offsetLeft > renderWidth) {
+            renderWidth = offsetLeft;
+        }
+        if (-offsetTop > renderHeight) {
+            renderHeight = -offsetTop;
+        }
+
+        i += fontChar.GetCode().length() - 1;
+        lastCharIndex = charIndex;
+        primitives += 2;
+    }
+    renderHeight += height;
+
+    glUseProgram(shader->GetProgram());
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture->GetTexture());
+    glUniform1i(textureUniform, 0);
+ 
+    Matrix position = Matrix::GeneratePosition(left - ((hookType & GL_FONT_TEXT_VERTICAL_CENTER) ? renderWidth / 2.0f : 0.0f), top + ((hookType & GL_FONT_TEXT_HORIZONTAL_CENTER) ? renderHeight / 2.0f : 0.0f), 0.0f);
+    glUniformMatrix4fv(positionUniform, 1, GL_FALSE, (Matrix::GenerateScale(1.0f / screenRatio, 1.0f, 0.0f) * position).GetData());
+
+    glUniform1f(opacityUniform, 1.0f);
+
+    glEnableVertexAttribArray(positionAttribute);
+    glEnableVertexAttribArray(textureAttribute);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(GLfloat), &(vertexData[0]), GL_STATIC_DRAW);
+    glVertexAttribPointer(positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, textureBuffer);
+    glBufferData(GL_ARRAY_BUFFER, textureData.size() * sizeof(GLfloat), &(textureData[0]), GL_STATIC_DRAW);
+    glVertexAttribPointer(textureAttribute, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
+
+    glDrawArrays(GL_TRIANGLES, 0, primitives * 3);
+
+    glDisableVertexAttribArray(positionAttribute);
+    glDisableVertexAttribArray(textureAttribute);
+
+    glDisable(GL_BLEND);
+}
+
+struct Particle
+{
+    GLfloat opacity, life, lifeDelta;
+    Matrix scale, position, delta;
+};
+
+class Background
+{
+    public:
+        Background(Texture &backgroundTexture, ShaderProgram &backgroundShader, Texture &particleTexture, ShaderProgram &particleShader, GLfloat screenRatio);
+        virtual ~Background();
+
+        void Render();
+        void Animate();
+    private:
+        Texture *backgroundTexture, *particleTexture;
+        ShaderProgram *backgroundShader, *particleShader;
+        GLuint vertexBuffer, textureBuffer, backgroundVertexAttribute, backgroundTextureAttribute, backgroundTextureUniform, particleVertexAttribute;
+        GLuint particleTextureAttribute, particlePositionUniform, particleTextureUniform, particleOpacityUniform;
+        vector<Particle> particles;
+        GLfloat screenRatio;
+
+#ifdef _WIN32
+        static PFNGLGENBUFFERSPROC glGenBuffers;
+        static PFNGLDELETEBUFFERSPROC glDeleteBuffers;
+        static PFNGLBINDBUFFERPROC glBindBuffer;
+        static PFNGLBUFFERDATAPROC glBufferData;
+        static PFNGLUSEPROGRAMPROC glUseProgram;
+        static PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
+        static PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
+        static PFNGLUNIFORM1IPROC glUniform1i;
+        static PFNGLUNIFORM1FPROC glUniform1f;
+        static PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
+        static PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
+        static PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
+        static PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
+        static PFNGLACTIVETEXTUREPROC glActiveTexture;
+#endif
+
+        void ResetParticle(Particle &particle, bool initial);
+
+        Background(const Background &source);
+        Background &operator=(const Background &source);
+};
+
+#ifdef _WIN32
+PFNGLGENBUFFERSPROC Background::glGenBuffers = NULL;
+PFNGLDELETEBUFFERSPROC Background::glDeleteBuffers = NULL;
+PFNGLBINDBUFFERPROC Background::glBindBuffer = NULL;
+PFNGLBUFFERDATAPROC Background::glBufferData = NULL;
+PFNGLUSEPROGRAMPROC Background::glUseProgram = NULL;
+PFNGLENABLEVERTEXATTRIBARRAYPROC Background::glEnableVertexAttribArray = NULL;
+PFNGLDISABLEVERTEXATTRIBARRAYPROC Background::glDisableVertexAttribArray = NULL;
+PFNGLUNIFORM1IPROC Background::glUniform1i = NULL;
+PFNGLUNIFORM1FPROC Background::glUniform1f = NULL;
+PFNGLUNIFORMMATRIX4FVPROC Background::glUniformMatrix4fv = NULL;
+PFNGLVERTEXATTRIBPOINTERPROC Background::glVertexAttribPointer = NULL;
+PFNGLGETATTRIBLOCATIONPROC Background::glGetAttribLocation = NULL;
+PFNGLGETUNIFORMLOCATIONPROC Background::glGetUniformLocation = NULL;
+PFNGLACTIVETEXTUREPROC Background::glActiveTexture = NULL;
+#endif
+
+Background::Background(Texture &backgroundTexture, ShaderProgram &backgroundShader, Texture &particleTexture, ShaderProgram &particleShader, GLfloat screenRatio) :
+    backgroundTexture(&backgroundTexture), backgroundShader(&backgroundShader), particleTexture(&particleTexture), particleShader(&particleShader), screenRatio(screenRatio)
+{
+#ifdef _WIN32
+    initGLFunction(glGenBuffers, "glGenBuffers");
+    initGLFunction(glDeleteBuffers, "glDeleteBuffers");
+    initGLFunction(glBindBuffer, "glBindBuffer");
+    initGLFunction(glBufferData, "glBufferData");
+    initGLFunction(glUseProgram, "glUseProgram");
+    initGLFunction(glEnableVertexAttribArray, "glEnableVertexAttribArray");
+    initGLFunction(glDisableVertexAttribArray, "glDisableVertexAttribArray");
+    initGLFunction(glUniform1i, "glUniform1i");
+    initGLFunction(glUniform1f, "glUniform1f");
+    initGLFunction(glUniformMatrix4fv, "glUniformMatrix4fv");
+    initGLFunction(glVertexAttribPointer, "glVertexAttribPointer");
+    initGLFunction(glGetAttribLocation, "glGetAttribLocation");
+    initGLFunction(glGetUniformLocation, "glGetUniformLocation");
+    initGLFunction(glActiveTexture, "glActiveTexture");
+#endif
+
+    backgroundVertexAttribute = glGetAttribLocation(backgroundShader.GetProgram(), "vertexPosition");
+    backgroundTextureAttribute = glGetAttribLocation(backgroundShader.GetProgram(), "vertexTexture");
+    backgroundTextureUniform = glGetUniformLocation(backgroundShader.GetProgram(), "texture");
+    particleVertexAttribute = glGetAttribLocation(particleShader.GetProgram(), "vertexPosition");
+    particleTextureAttribute = glGetAttribLocation(particleShader.GetProgram(), "vertexTexture");
+    particlePositionUniform = glGetUniformLocation(particleShader.GetProgram(), "positionMatrix");
+    particleTextureUniform = glGetUniformLocation(particleShader.GetProgram(), "texture");
+    particleOpacityUniform = glGetUniformLocation(particleShader.GetProgram(), "opacity");
+
+    glGenBuffers(1, &vertexBuffer);
+
+    try {
+        glGenBuffers(1, &textureBuffer);
+    } catch (Exception e) {
+        glDeleteBuffers(1, &vertexBuffer);
+        throw e;
+    }
+
+    for (uint32_t i = 0; i < NUMBER_OF_PARTICLES; i++) {
+        Particle particle;
+        ResetParticle(particle, true);
+        particles.push_back(particle);
+    }
+}
+
+Background::~Background()
+{
+    glDeleteBuffers(1, &vertexBuffer);
+    glDeleteBuffers(1, &textureBuffer);
+}
+
+void Background::Render()
+{
+    Matrix screen = Matrix::GenerateScale(1.0f / screenRatio, 1.0f, 1.0f);
+
+    GLfloat vertexData[] = {
+        -1.0f, -1.0f, 0.0f,
+        1.0f, 1.0f, 0.0f,
+        1.0f, -1.0f, 0.0f,
+        -1.0f, -1.0f, 0.0f,
+        -1.0f, 1.0f, 0.0f,
+        1.0f, 1.0f, 0.0f
+    };
+
+    GLfloat textureData[] = {
+        0.0f, 1.0f,
+        1.0f, 0.0f,
+        1.0f, 1.0f,
+        0.0f, 1.0f,
+        0.0f, 0.0f,
+        1.0f, 0.0f
+    };
+
+    glUseProgram(backgroundShader->GetProgram());
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, backgroundTexture->GetTexture());
+    glUniform1i(backgroundTextureUniform, 0);
+
+    glEnableVertexAttribArray(backgroundVertexAttribute);
+    glEnableVertexAttribArray(backgroundTextureAttribute);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertexData), vertexData, GL_STATIC_DRAW);
+    glVertexAttribPointer(backgroundVertexAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, textureBuffer);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(textureData), textureData, GL_STATIC_DRAW);
+    glVertexAttribPointer(backgroundTextureAttribute, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
+
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    glDisableVertexAttribArray(backgroundVertexAttribute);
+    glDisableVertexAttribArray(backgroundTextureAttribute);
+
+    glUseProgram(particleShader->GetProgram());
+
+    glBindTexture(GL_TEXTURE_2D, particleTexture->GetTexture());
+    glUniform1i(particleTextureUniform, 0);
+
+    glEnableVertexAttribArray(particleVertexAttribute);
+    glEnableVertexAttribArray(particleTextureAttribute);
+
+    for (uint32_t i = 0; i < particles.size(); i++) {
+        glUniformMatrix4fv(particlePositionUniform, 1, GL_FALSE, (screen * particles[i].position * particles[i].scale).GetData());
+
+        glUniform1f(particleOpacityUniform, particles[i].opacity * sin(particles[i].life * M_PI));
+
+        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+        glVertexAttribPointer(particleVertexAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, textureBuffer);
+        glVertexAttribPointer(particleTextureAttribute, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+
+    glDisableVertexAttribArray(particleVertexAttribute);
+    glDisableVertexAttribArray(particleTextureAttribute);
+
+    glDisable(GL_BLEND);
+}
+
+void Background::Animate()
+{
+    for (uint32_t i = 0; i < particles.size(); i++) {
+        particles[i].position = particles[i].position * particles[i].delta;
+        particles[i].life += particles[i].lifeDelta;
+        GLfloat *position = particles[i].position.GetData();
+        GLfloat *scale = particles[i].scale.GetData();
+        if (position[12] < -screenRatio - scale[0]) {
+            position[12] = screenRatio + scale[0];
+        }
+        if (position[12] > screenRatio + scale[0]) {
+            position[12] = -screenRatio - scale[0];
+        }
+        if ((particles[i].life > 1.0f) || (position[13] < -1.0f - scale[5])) {
+            ResetParticle(particles[i], false);
+        }
+    }
+}
+
+void Background::ResetParticle(Particle &particle, bool initial)
+{
+    GLfloat scale = (rand() % 40) / 100.0f + 0.4f;
+    if (initial) {
+        particle.scale.SetSize(4, 4);
+        particle.life = (rand() % 100) / 100.0f;
+    }
+    particle.scale = Matrix::GenerateScale((1.0f + (rand() % 40) / 100.0f) * scale, scale, scale);
+    particle.position = Matrix::GeneratePosition(((rand() % 200) / 100.0f - 1.0f) * screenRatio, initial ? (rand() % 200) / 100.0f - 1.0f : (rand() % 200) / 100.0f - 0.66f, 0.0f);
+    particle.delta = Matrix::GeneratePosition((rand() % 20) / 10000.0f - 0.001f, (rand() % 10) / 10000.0f - 0.002f, 0.0f);
+    particle.opacity = 0.05f + (rand() % 15) / 100.0f;
+    particle.life = initial ? (rand() % 100) / 100.0f : 0.0f;
+    particle.lifeDelta = (1 + rand() % 60) / 10000.0f;
+}
+
 bool quit = false;
 
 #ifndef _WIN32
@@ -990,118 +1734,56 @@ int main(int argc, const char **argv)
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 #endif
 {
-    Window *window = NULL;
 #ifndef _WIN32
     signal(SIGINT, signalHandler);
 #endif
 
     try {
-        window = &Window::Initialize();
-
-#ifdef _WIN32
-        PFNGLBINDBUFFERPROC glBindBuffer = NULL;
-        PFNGLBUFFERDATAPROC glBufferData = NULL;
-        PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = NULL;
-        PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = NULL;
-        PFNGLGENBUFFERSPROC glGenBuffers = NULL;
-        PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation = NULL;
-        PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = NULL;
-        PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv = NULL;
-        PFNGLUSEPROGRAMPROC glUseProgram = NULL;
-        PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = NULL;
-
-        initGLFunction(glBindBuffer, "glBindBuffer");
-        initGLFunction(glBufferData, "glBufferData");
-        initGLFunction(glDisableVertexAttribArray, "glDisableVertexAttribArray");
-        initGLFunction(glEnableVertexAttribArray, "glEnableVertexAttribArray");
-        initGLFunction(glGenBuffers, "glGenBuffers");
-        initGLFunction(glGetAttribLocation, "glGetAttribLocation");
-        initGLFunction(glGetUniformLocation, "glGetUniformLocation");
-        initGLFunction(glUniformMatrix4fv, "glUniformMatrix4fv");
-        initGLFunction(glUseProgram, "glUseProgram");
-        initGLFunction(glVertexAttribPointer, "glVertexAttribPointer");
-#endif
-
-        char vertexShaderCode[] =
-            "attribute vec3 vertexPosition;                             \n"
-            "attribute vec3 vertexColor;                                \n"
-            "varying vec3 fragmentColor;                                \n"
-            "uniform mat4 rotationMatrix;                               \n"
-            "                                                           \n"
-            "void main()                                                \n"
-            "{                                                          \n"
-            "   gl_Position = rotationMatrix * vec4(vertexPosition, 1); \n"
-            "   fragmentColor = vertexColor;                            \n"
-            "}                                                          \n";
-
-        char fragmentShaderCode[] =
-            "varying vec3 fragmentColor;                                \n"
-            "                                                           \n"
-            "void main()                                                \n"
-            "{                                                          \n"
-            "   gl_FragColor = vec4(fragmentColor, 1);                  \n"
-            "}                                                          \n";
-
-        ShaderProgram program(vertexShaderCode, fragmentShaderCode, GL_SHADER_CODE_FROM_STRING);
-        GLuint vertPositionAttribute = glGetAttribLocation(program.GetProgram(), "vertexPosition");
-        GLuint vertColorAttribute = glGetAttribLocation(program.GetProgram(), "vertexColor");
-        GLuint rotMatrixUniform = glGetUniformLocation(program.GetProgram(), "rotationMatrix");
-
-        GLfloat angle = 0.0f;
-
-        GLfloat vertexData[] = {
-           -0.65f, -0.375f, 0.0f,
-           0.65f, -0.375f, 0.0f,
-           0.0f, 0.75f, 0.0f
-        };
-
-        GLfloat colorData[] = {
-           1.0f, 0.0f, 0.0f,
-           0.0f, 1.0f, 0.0f,
-           0.0f, 0.0f, 1.0f
-        };
+        Window *window = &Window::Initialize();
 
         uint32_t width, height;
         window->GetClientSize(width, height);
         glViewport(0, 0, width, height);
+        GLfloat screenRatio = width / (GLfloat)height;
 
-        GLuint vertexBuffer;
-        glGenBuffers(1, &vertexBuffer);
-        glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertexData), vertexData, GL_STATIC_DRAW);
+        Texture fontTexture("images/euphemia.png");
+        ShaderProgram fontShader("shaders/particle.vs", "shaders/particle.fs", GL_SHADER_CODE_FROM_FILE);
+        Font font("fonts/euphemia.fnt", fontTexture, fontShader);
 
-        GLuint colorBuffer;
-        glGenBuffers(1, &colorBuffer);
-        glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(colorData), colorData, GL_STATIC_DRAW);
+        Texture backgroundTexture("images/background.png");
+        ShaderProgram backgroundShader("shaders/background.vs", "shaders/background.fs", GL_SHADER_CODE_FROM_FILE);
+        Texture particleTexture("images/particle.png");
+        ShaderProgram particleShader("shaders/particle.vs", "shaders/particle.fs", GL_SHADER_CODE_FROM_FILE);
+        Background background(backgroundTexture, backgroundShader, particleTexture, particleShader, screenRatio);
 
         while (!quit) {
-            Matrix rotation = Matrix::GenerateRotation(angle, ROTATION_AXIS_Z);
             switch (window->PollEvent()) {
                 case WINDOW_EVENT_NO_EVENT:
-                    glClearColor(0.15f, 0.25f, 0.35f, 1.0f);
+                    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
                     glClear(GL_COLOR_BUFFER_BIT);
-
-                    glUseProgram(program.GetProgram());
-                    glUniformMatrix4fv(rotMatrixUniform, 1, GL_FALSE, rotation.GetData());
-
-                    glEnableVertexAttribArray(vertPositionAttribute);
-                    glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-                    glVertexAttribPointer(vertPositionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
-
-                    glEnableVertexAttribArray(vertColorAttribute);
-                    glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
-                    glVertexAttribPointer(vertColorAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
-
-                    glDrawArrays(GL_TRIANGLES, 0, 3);
-
-                    glDisableVertexAttribArray(vertPositionAttribute);
-                    glDisableVertexAttribArray(vertColorAttribute);
-
+                    background.Render();
+                    font.RenderText(
+                        "CROSS-PLATFORM OPENGL 2 DEMO",
+                        0.0f,
+                        0.25f,
+                        0.14f,
+                        screenRatio,
+                        GL_FONT_TEXT_VERTICAL_CENTER | GL_FONT_TEXT_HORIZONTAL_CENTER
+                    );
+                    font.RenderText(
+                        "This is simple cross-platform OpenGL 2 demo.\n"
+                        "Graphics and texts are generated real time.\n"
+                        "This works both on Windows platform and\n"
+                        "Raspberry Pi (with use of native OpenGL ES 2).",
+                        0.0f,
+                        -0.10f,
+                        0.11f,
+                        screenRatio,
+                        GL_FONT_TEXT_VERTICAL_CENTER | GL_FONT_TEXT_HORIZONTAL_CENTER
+                    );
                     window->SwapBuffers();
-
-                    angle += 0.1f;
-                    usleep(1000);
+                    background.Animate();
+                    usleep(10000);
                     break;
                 case WINDOW_EVENT_ESC_KEY_PRESSED:
                 case WINDOW_EVENT_WINDOW_CLOSED:
