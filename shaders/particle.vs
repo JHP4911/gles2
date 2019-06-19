@@ -1,3 +1,4 @@
+#version 120
 uniform mat4 positionMatrix;
 attribute vec3 vertexPosition;
 attribute vec2 vertexTexture;
