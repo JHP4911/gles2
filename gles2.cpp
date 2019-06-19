@@ -1780,21 +1780,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     glClear(GL_COLOR_BUFFER_BIT);
                     background.Render();
                     font.RenderText(
-                        "CROSS-PLATFORM OPENGL 2 DEMO",
-                        0.0f,
-                        0.25f,
-                        0.14f,
-                        screenRatio,
-                        GL_FONT_TEXT_VERTICAL_CENTER | GL_FONT_TEXT_HORIZONTAL_CENTER
-                    );
-                    font.RenderText(
                         "This is simple cross-platform OpenGL 2 demo.\n"
                         "Graphics and texts are generated real time.\n"
                         "This works both on Windows platform and\n"
                         "Raspberry Pi (with use of native OpenGL ES 2).",
                         0.0f,
-                        -0.10f,
-                        0.11f,
+                        0.0f,
+                        0.125f,
                         screenRatio,
                         GL_FONT_TEXT_VERTICAL_CENTER | GL_FONT_TEXT_HORIZONTAL_CENTER
                     );
