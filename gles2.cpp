@@ -113,6 +113,8 @@ class Window
         static int32_t exitCode;
 #endif
 
+        Window(const Window &source) = delete;
+        Window &operator=(const Window &source) = delete;
         virtual ~Window();
         static Window &Initialize();
         void Close();
@@ -145,8 +147,6 @@ class Window
         uint32_t clientWidth, clientHeight;
 
         Window();
-        Window(const Window &source);
-        Window &operator=(const Window &source);
 #ifdef _WIN32
         static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 #endif
@@ -605,6 +605,8 @@ class ShaderProgram
 {
     public:
         ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, GLenum srcType);
+        ShaderProgram(const ShaderProgram &source) = delete;
+        ShaderProgram &operator=(const ShaderProgram &source) = delete;
         virtual ~ShaderProgram();
 
         GLuint GetProgram();
@@ -627,8 +629,6 @@ class ShaderProgram
         static PFNGLSHADERSOURCEPROC glShaderSource;
 #endif
 
-        ShaderProgram(const ShaderProgram &source);
-        ShaderProgram &operator=(const ShaderProgram &source);
         GLuint LoadShader(const char *shaderSrc, GLenum srcType, GLenum shaderType);
 };
 
@@ -782,6 +782,8 @@ class Texture
     public:
         Texture(const char *textureSrc);
         Texture(GLuint width, GLuint height, GLchar *data);
+        Texture(const Texture &source) = delete;
+        Texture &operator=(const Texture &source) = delete;
         virtual ~Texture();
 
         GLuint GetTexture();
@@ -791,9 +793,6 @@ class Texture
         GLuint texture;
         GLuint width;
         GLuint height;
-
-        Texture(const Texture &source);
-        Texture &operator=(const Texture &source);
 };
 
 Texture::Texture(const char *textureSrc)
@@ -1164,9 +1163,9 @@ CharSize FontChar::GetSize()
 
 GLfloat FontChar::GetAdvance(uint16_t character)
 {
-    for (uint32_t i = 0; i < advances.size(); i++) {
-        if (advances[i].character == character) {
-            return advances[i].advance;
+    for (CharAdvance advance : advances) {
+        if (advance.character == character) {
+            return advance.advance;
         }
     }
     return 0;
@@ -1180,6 +1179,8 @@ class Font
 {
     public:
         Font(const char *fontSrc, Texture &texture, ShaderProgram &shader);
+        Font(const Font &source) = delete;
+        Font &operator=(const Font &source) = delete;
         virtual ~Font();
 
         void RenderText(string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType);
@@ -1206,8 +1207,6 @@ class Font
         static PFNGLACTIVETEXTUREPROC glActiveTexture;
 #endif
 
-        Font(const Font &source);
-        Font &operator=(const Font &source);
         void AddCharacter(FontChar fontChar);
         FontChar GetCharacter(string text, uint32_t offset, uint16_t &index);
 };
@@ -1488,7 +1487,7 @@ void Font::RenderText(string text, GLfloat left, GLfloat top, GLfloat height, GL
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture->GetTexture());
     glUniform1i(textureUniform, 0);
- 
+
     Matrix position = Matrix::GeneratePosition(left - ((hookType & GL_FONT_TEXT_VERTICAL_CENTER) ? renderWidth / 2.0f : 0.0f), top + ((hookType & GL_FONT_TEXT_HORIZONTAL_CENTER) ? renderHeight / 2.0f : 0.0f), 0.0f);
     glUniformMatrix4fv(positionUniform, 1, GL_FALSE, (Matrix::GenerateScale(1.0f / screenRatio, 1.0f, 0.0f) * position).GetData());
 
@@ -1523,6 +1522,8 @@ class Background
 {
     public:
         Background(Texture &backgroundTexture, ShaderProgram &backgroundShader, Texture &particleTexture, ShaderProgram &particleShader, GLfloat screenRatio);
+        Background(const Background &source) = delete;
+        Background &operator=(const Background &source) = delete;
         virtual ~Background();
 
         void Render();
@@ -1553,9 +1554,6 @@ class Background
 #endif
 
         void ResetParticle(Particle &particle, bool initial);
-
-        Background(const Background &source);
-        Background &operator=(const Background &source);
 };
 
 #ifdef _WIN32
@@ -1684,7 +1682,7 @@ void Background::Render()
     for (uint32_t i = 0; i < particles.size(); i++) {
         glUniformMatrix4fv(particlePositionUniform, 1, GL_FALSE, (screen * particles[i].position * particles[i].scale).GetData());
 
-        glUniform1f(particleOpacityUniform, particles[i].opacity * sin(particles[i].life * M_PI));
+        glUniform1f(particleOpacityUniform, particles[i].opacity * sin(particles[i].life * 3.14159265358979f));
 
         glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
         glVertexAttribPointer(particleVertexAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);

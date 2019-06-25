@@ -1,4 +1,4 @@
-FLAGS = -Wall -O3
+FLAGS = -Wall -O3 -std=c++11
 INCLUDES = -I/opt/vc/include -I/usr/include/SDL
 LIBS = -L/opt/vc/lib -lSDL -lbcm_host -lbrcmEGL -lbrcmGLESv2
 
