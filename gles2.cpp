@@ -63,7 +63,7 @@ class Exception : public exception
         explicit Exception(string message);
         virtual ~Exception() throw();
 
-        virtual const char *what() const throw();
+        virtual const char* what() const throw();
     private:
         string exceptionMessage;
 };
@@ -77,7 +77,7 @@ Exception::~Exception() throw()
 {
 }
 
-const char *Exception::what() const throw()
+const char* Exception::what() const throw()
 {
     return exceptionMessage.c_str();
 }
@@ -93,17 +93,33 @@ void usleep(uint32_t uSec)
     CloseHandle(timer);
 }
 
-template <typename FunctionType>
-void initGLFunction(FunctionType &func, string funcName)
-{
-    if (func == NULL) {
-        if ((func = reinterpret_cast <FunctionType> (wglGetProcAddress(funcName.c_str()))) == NULL) {
-            ostringstream oss;
-            oss << "Cannot initialize " << funcName << " function";
-            throw Exception(oss.str());
-        }
-    }
-}
+PFNGLACTIVETEXTUREPROC glActiveTexture;
+PFNGLATTACHSHADERPROC glAttachShader;
+PFNGLBINDBUFFERPROC glBindBuffer;
+PFNGLBUFFERDATAPROC glBufferData;
+PFNGLCOMPILESHADERPROC glCompileShader;
+PFNGLCREATEPROGRAMPROC glCreateProgram;
+PFNGLCREATESHADERPROC glCreateShader;
+PFNGLDELETEBUFFERSPROC glDeleteBuffers;
+PFNGLDELETEPROGRAMPROC glDeleteProgram;
+PFNGLDELETESHADERPROC glDeleteShader;
+PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
+PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
+PFNGLGENBUFFERSPROC glGenBuffers;
+PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
+PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
+PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog;
+PFNGLGETPROGRAMIVPROC glGetProgramiv;
+PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog;
+PFNGLGETSHADERIVPROC glGetShaderiv;
+PFNGLLINKPROGRAMPROC glLinkProgram;
+PFNGLSHADERSOURCEPROC glShaderSource;
+PFNGLUSEPROGRAMPROC glUseProgram;
+PFNGLUNIFORM1IPROC glUniform1i;
+PFNGLUNIFORM1FPROC glUniform1f;
+PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
+PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
+PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
 #endif
 
 class Window
@@ -114,9 +130,9 @@ class Window
 #endif
 
         Window(const Window &source) = delete;
-        Window &operator=(const Window &source) = delete;
+        Window& operator=(const Window &source) = delete;
         virtual ~Window();
-        static Window &Initialize();
+        static Window& Initialize();
         void Close();
         bool SwapBuffers();
         void GetClientSize(uint32_t &width, uint32_t &height);
@@ -147,7 +163,11 @@ class Window
         uint32_t clientWidth, clientHeight;
 
         Window();
+
 #ifdef _WIN32
+        template <class T>
+        T InitGLFunction(string glFuncName);
+        void InitGL();
         static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 #endif
 };
@@ -169,7 +189,7 @@ Window::Window()
     SDL_WM_SetCaption("SDL Window", "SDL Icon");
 
     SDL_Surface *sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
-    if (sdlScreen == NULL) {
+    if (sdlScreen == nullptr) {
         SDL_Quit();
         throw Exception("Cannot create SDL window");
     }
@@ -180,7 +200,7 @@ Window::Window()
         throw Exception("Cannot obtain EGL display connection");
     }
 
-    if (eglInitialize(eglDisplay, NULL, NULL) != EGL_TRUE) {
+    if (eglInitialize(eglDisplay, nullptr, nullptr) != EGL_TRUE) {
         SDL_Quit();
         throw Exception("Cannot initialize EGL display connection");
     }
@@ -305,7 +325,7 @@ Window::Window()
     nativeWindow.height = clientHeight;
     vc_dispmanx_update_submit_sync(dispmanUpdate);
 
-    eglSurface = eglCreateWindowSurface(eglDisplay, config, &nativeWindow, NULL);
+    eglSurface = eglCreateWindowSurface(eglDisplay, config, &nativeWindow, nullptr);
     if (eglSurface == EGL_NO_SURFACE) {
 #ifdef TFT_OUTPUT
         munmap(framebuffer, fbMemSize);
@@ -453,9 +473,8 @@ Window::Window()
         0
     };
 
-    PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = NULL;
     try {
-        initGLFunction(wglCreateContextAttribsARB, "wglCreateContextAttribsARB");
+        InitGL();
     } catch (Exception e) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
@@ -575,6 +594,49 @@ int32_t Window::PollEvent()
 
 
 #ifdef _WIN32
+template <class T>
+T Window::InitGLFunction(string glFuncName)
+{
+    T func = reinterpret_cast<T>(wglGetProcAddress(glFuncName.c_str()));
+    if (func == nullptr) {
+        ostringstream oss;
+        oss << "Cannot initialize " << glFuncName << " function";
+        throw Exception(oss.str());
+    }
+    return func;
+}
+
+void Window::InitGL()
+{
+    glActiveTexture = InitGLFunction<PFNGLACTIVETEXTUREPROC>("glActiveTexture");
+    glAttachShader = InitGLFunction<PFNGLATTACHSHADERPROC>("glAttachShader");
+    glBindBuffer = InitGLFunction<PFNGLBINDBUFFERPROC>("glBindBuffer");
+    glBufferData = InitGLFunction<PFNGLBUFFERDATAPROC>("glBufferData");
+    glCompileShader = InitGLFunction<PFNGLCOMPILESHADERPROC>("glCompileShader");
+    glCreateProgram = InitGLFunction<PFNGLCREATEPROGRAMPROC>("glCreateProgram");
+    glCreateShader = InitGLFunction<PFNGLCREATESHADERPROC>("glCreateShader");
+    glDeleteBuffers = InitGLFunction<PFNGLDELETEBUFFERSPROC>("glDeleteBuffers");
+    glDeleteProgram = InitGLFunction<PFNGLDELETEPROGRAMPROC>("glDeleteProgram");
+    glDeleteShader = InitGLFunction<PFNGLDELETESHADERPROC>("glDeleteShader");
+    glDisableVertexAttribArray = InitGLFunction<PFNGLDISABLEVERTEXATTRIBARRAYPROC>("glDisableVertexAttribArray");
+    glEnableVertexAttribArray = InitGLFunction<PFNGLENABLEVERTEXATTRIBARRAYPROC>("glEnableVertexAttribArray");
+    glGenBuffers = InitGLFunction<PFNGLGENBUFFERSPROC>("glGenBuffers");
+    glGetAttribLocation = InitGLFunction<PFNGLGETATTRIBLOCATIONPROC>("glGetAttribLocation");
+    glGetUniformLocation = InitGLFunction<PFNGLGETUNIFORMLOCATIONPROC>("glGetUniformLocation");
+    glGetProgramInfoLog = InitGLFunction<PFNGLGETPROGRAMINFOLOGPROC>("glGetProgramInfoLog");
+    glGetProgramiv = InitGLFunction<PFNGLGETPROGRAMIVPROC>("glGetProgramiv");
+    glGetShaderInfoLog = InitGLFunction<PFNGLGETSHADERINFOLOGPROC>("glGetShaderInfoLog");
+    glGetShaderiv = InitGLFunction<PFNGLGETSHADERIVPROC>("glGetShaderiv");
+    glLinkProgram = InitGLFunction<PFNGLLINKPROGRAMPROC>("glLinkProgram");
+    glShaderSource = InitGLFunction<PFNGLSHADERSOURCEPROC>("glShaderSource");
+    glUseProgram = InitGLFunction<PFNGLUSEPROGRAMPROC>("glUseProgram");
+    glUniform1i = InitGLFunction<PFNGLUNIFORM1IPROC>("glUniform1i");
+    glUniform1f = InitGLFunction<PFNGLUNIFORM1FPROC>("glUniform1f");
+    glUniformMatrix4fv = InitGLFunction<PFNGLUNIFORMMATRIX4FVPROC>("glUniformMatrix4fv");
+    glVertexAttribPointer = InitGLFunction<PFNGLVERTEXATTRIBPOINTERPROC>("glVertexAttribPointer");
+    wglCreateContextAttribsARB = InitGLFunction<PFNWGLCREATECONTEXTATTRIBSARBPROC>("wglCreateContextAttribsARB");
+}
+
 LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_CLOSE) {
@@ -604,7 +666,7 @@ class ShaderProgram
     public:
         ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, GLenum srcType);
         ShaderProgram(const ShaderProgram &source) = delete;
-        ShaderProgram &operator=(const ShaderProgram &source) = delete;
+        ShaderProgram& operator=(const ShaderProgram &source) = delete;
         virtual ~ShaderProgram();
 
         GLuint GetProgram();
@@ -612,52 +674,13 @@ class ShaderProgram
         GLuint vertexShader;
         GLuint fragmentShader;
         GLuint program;
-#ifdef _WIN32
-        static PFNGLATTACHSHADERPROC glAttachShader;
-        static PFNGLCOMPILESHADERPROC glCompileShader;
-        static PFNGLCREATEPROGRAMPROC glCreateProgram;
-        static PFNGLCREATESHADERPROC glCreateShader;
-        static PFNGLDELETEPROGRAMPROC glDeleteProgram;
-        static PFNGLDELETESHADERPROC glDeleteShader;
-        static PFNGLGETPROGRAMIVPROC glGetProgramiv;
-        static PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog;
-        static PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog;
-        static PFNGLGETSHADERIVPROC glGetShaderiv;
-        static PFNGLLINKPROGRAMPROC glLinkProgram;
-        static PFNGLSHADERSOURCEPROC glShaderSource;
-#endif
 
         GLuint LoadShader(const char *shaderSrc, GLenum srcType, GLenum shaderType);
 };
 
-#ifdef _WIN32
-PFNGLATTACHSHADERPROC ShaderProgram::glAttachShader = NULL;
-PFNGLCOMPILESHADERPROC ShaderProgram::glCompileShader = NULL;
-PFNGLCREATEPROGRAMPROC ShaderProgram::glCreateProgram = NULL;
-PFNGLCREATESHADERPROC ShaderProgram::glCreateShader = NULL;
-PFNGLDELETEPROGRAMPROC ShaderProgram::glDeleteProgram = NULL;
-PFNGLDELETESHADERPROC ShaderProgram::glDeleteShader = NULL;
-PFNGLGETPROGRAMIVPROC ShaderProgram::glGetProgramiv = NULL;
-PFNGLGETSHADERINFOLOGPROC ShaderProgram::glGetShaderInfoLog = NULL;
-PFNGLGETPROGRAMINFOLOGPROC ShaderProgram::glGetProgramInfoLog = NULL;
-PFNGLGETSHADERIVPROC ShaderProgram::glGetShaderiv = NULL;
-PFNGLLINKPROGRAMPROC ShaderProgram::glLinkProgram = NULL;
-PFNGLSHADERSOURCEPROC ShaderProgram::glShaderSource = NULL;
-#endif
-
 ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, GLenum srcType)
 {
     GLint isLinked;
-
-#ifdef _WIN32
-    initGLFunction(glAttachShader, "glAttachShader");
-    initGLFunction(glCreateProgram, "glCreateProgram");
-    initGLFunction(glDeleteProgram, "glDeleteProgram");
-    initGLFunction(glDeleteShader, "glDeleteShader");
-    initGLFunction(glGetProgramiv, "glGetProgramiv");
-    initGLFunction(glGetProgramInfoLog, "glGetProgramInfoLog");
-    initGLFunction(glLinkProgram, "glLinkProgram");
-#endif
 
     vertexShader = LoadShader(vertexShaderSrc, srcType, GL_VERTEX_SHADER);
     if (vertexShader == 0) {
@@ -683,7 +706,7 @@ ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentSh
         glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLen);
         if (infoLen > 1) {
             char *infoLog = new char[infoLen];
-            glGetProgramInfoLog(program, infoLen, NULL, infoLog);
+            glGetProgramInfoLog(program, infoLen, nullptr, infoLog);
 #ifndef _WIN32
             cout << "Shader linker error:" << endl << infoLog << endl;
 #else
@@ -740,14 +763,6 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, GLenum srcType, GLenum s
             return 0;
     }
 
-#ifdef _WIN32
-    initGLFunction(glCreateShader, "glCreateShader");
-    initGLFunction(glCompileShader, "glCompileShader");
-    initGLFunction(glGetShaderInfoLog, "glGetShaderInfoLog");
-    initGLFunction(glGetShaderiv, "glGetShaderiv");
-    initGLFunction(glShaderSource, "glShaderSource");
-#endif
-
     shader = glCreateShader(shaderType);
     if (shader == 0)
         return 0;
@@ -759,7 +774,7 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, GLenum srcType, GLenum s
         glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
         if (infoLen > 1) {
             char *infoLog = new char[infoLen];
-            glGetShaderInfoLog(shader, infoLen, NULL, infoLog);
+            glGetShaderInfoLog(shader, infoLen, nullptr, infoLog);
 #ifndef _WIN32
             cout << "Shader compilation error:" << endl << infoLog << endl;
 #else
@@ -843,7 +858,7 @@ class Matrix
         Matrix(GLuint width, GLuint height, GLfloat *matrixData);
         virtual ~Matrix();
 
-        GLfloat *GetData();
+        GLfloat* GetData();
 
         void GetSize(GLuint &width, GLuint &height);
         void SetSize(GLuint width, GLuint height);
@@ -851,8 +866,8 @@ class Matrix
         Matrix operator+(const Matrix &matrix);
         Matrix operator-(const Matrix &matrix);
         Matrix operator*(const Matrix &matrix);
-        Matrix &operator=(const Matrix &source);
-        Matrix &operator=(const GLfloat *sourceData);
+        Matrix& operator=(const Matrix &source);
+        Matrix& operator=(const GLfloat *sourceData);
 
         static Matrix GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane);
         static Matrix GeneratePosition(GLfloat x, GLfloat y, GLfloat z);
@@ -979,7 +994,7 @@ Matrix Matrix::GenerateRotation(GLfloat angle, GLuint axis)
     return result;
 }
 
-GLfloat *Matrix::GetData()
+GLfloat* Matrix::GetData()
 {
     return data;
 }
@@ -1026,7 +1041,7 @@ Matrix Matrix::operator*(const Matrix &matrix)
     return result;
 }
 
-Matrix &Matrix::operator=(const Matrix &source)
+Matrix& Matrix::operator=(const Matrix &source)
 {
     if ((width != source.width) || (height != source.height)) {
         delete [] data;
@@ -1038,7 +1053,7 @@ Matrix &Matrix::operator=(const Matrix &source)
     return *this;
 }
 
-Matrix &Matrix::operator=(const GLfloat *sourceData)
+Matrix& Matrix::operator=(const GLfloat *sourceData)
 {
     memcpy(data, sourceData, sizeof(GLfloat) * width * height);
     return *this;
@@ -1095,7 +1110,7 @@ class FontChar
     public:
         FontChar(string code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size);
         FontChar(const FontChar &source);
-        FontChar &operator=(const FontChar &source);
+        FontChar& operator=(const FontChar &source);
 
         string GetCode();
         GLfloat GetWidth();
@@ -1123,7 +1138,7 @@ FontChar::FontChar(const FontChar &source) :
 {
 }
 
-FontChar &FontChar::operator=(const FontChar &source)
+FontChar& FontChar::operator=(const FontChar &source)
 {
     code = source.code;
     width = source.width;
@@ -1178,7 +1193,7 @@ class Font
     public:
         Font(const char *fontSrc, Texture &texture, ShaderProgram &shader);
         Font(const Font &source) = delete;
-        Font &operator=(const Font &source) = delete;
+        Font& operator=(const Font &source) = delete;
         virtual ~Font();
 
         void RenderText(string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType);
@@ -1188,64 +1203,14 @@ class Font
         ShaderProgram *shader;
         GLuint vertexBuffer, textureBuffer, positionAttribute, textureAttribute, positionUniform, textureUniform, opacityUniform;
         vector<FontChar> font;
-#ifdef _WIN32
-        static PFNGLGENBUFFERSPROC glGenBuffers;
-        static PFNGLDELETEBUFFERSPROC glDeleteBuffers;
-        static PFNGLBINDBUFFERPROC glBindBuffer;
-        static PFNGLBUFFERDATAPROC glBufferData;
-        static PFNGLUSEPROGRAMPROC glUseProgram;
-        static PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
-        static PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
-        static PFNGLUNIFORM1IPROC glUniform1i;
-        static PFNGLUNIFORM1FPROC glUniform1f;
-        static PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
-        static PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
-        static PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
-        static PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
-        static PFNGLACTIVETEXTUREPROC glActiveTexture;
-#endif
 
         void AddCharacter(FontChar fontChar);
         FontChar GetCharacter(string text, uint32_t offset, uint16_t &index);
 };
 
-#ifdef _WIN32
-PFNGLGENBUFFERSPROC Font::glGenBuffers = NULL;
-PFNGLDELETEBUFFERSPROC Font::glDeleteBuffers = NULL;
-PFNGLBINDBUFFERPROC Font::glBindBuffer = NULL;
-PFNGLBUFFERDATAPROC Font::glBufferData = NULL;
-PFNGLUSEPROGRAMPROC Font::glUseProgram = NULL;
-PFNGLENABLEVERTEXATTRIBARRAYPROC Font::glEnableVertexAttribArray = NULL;
-PFNGLDISABLEVERTEXATTRIBARRAYPROC Font::glDisableVertexAttribArray = NULL;
-PFNGLUNIFORM1IPROC Font::glUniform1i = NULL;
-PFNGLUNIFORM1FPROC Font::glUniform1f = NULL;
-PFNGLUNIFORMMATRIX4FVPROC Font::glUniformMatrix4fv = NULL;
-PFNGLVERTEXATTRIBPOINTERPROC Font::glVertexAttribPointer = NULL;
-PFNGLGETATTRIBLOCATIONPROC Font::glGetAttribLocation = NULL;
-PFNGLGETUNIFORMLOCATIONPROC Font::glGetUniformLocation = NULL;
-PFNGLACTIVETEXTUREPROC Font::glActiveTexture = NULL;
-#endif
-
 Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
     texture(&texture), shader(&shader)
 {
-#ifdef _WIN32
-    initGLFunction(glGenBuffers, "glGenBuffers");
-    initGLFunction(glDeleteBuffers, "glDeleteBuffers");
-    initGLFunction(glBindBuffer, "glBindBuffer");
-    initGLFunction(glBufferData, "glBufferData");
-    initGLFunction(glUseProgram, "glUseProgram");
-    initGLFunction(glEnableVertexAttribArray, "glEnableVertexAttribArray");
-    initGLFunction(glDisableVertexAttribArray, "glDisableVertexAttribArray");
-    initGLFunction(glUniform1i, "glUniform1i");
-    initGLFunction(glUniform1f, "glUniform1f");
-    initGLFunction(glUniformMatrix4fv, "glUniformMatrix4fv");
-    initGLFunction(glVertexAttribPointer, "glVertexAttribPointer");
-    initGLFunction(glGetAttribLocation, "glGetAttribLocation");
-    initGLFunction(glGetUniformLocation, "glGetUniformLocation");
-    initGLFunction(glActiveTexture, "glActiveTexture");
-#endif
-
     ifstream file;
     uint16_t buffer[256];
     file.open(fontSrc, ifstream::binary);
@@ -1521,7 +1486,7 @@ class Background
     public:
         Background(Texture &backgroundTexture, ShaderProgram &backgroundShader, Texture &particleTexture, ShaderProgram &particleShader, GLfloat screenRatio);
         Background(const Background &source) = delete;
-        Background &operator=(const Background &source) = delete;
+        Background& operator=(const Background &source) = delete;
         virtual ~Background();
 
         void Render();
@@ -1534,63 +1499,12 @@ class Background
         vector<Particle> particles;
         GLfloat screenRatio;
 
-#ifdef _WIN32
-        static PFNGLGENBUFFERSPROC glGenBuffers;
-        static PFNGLDELETEBUFFERSPROC glDeleteBuffers;
-        static PFNGLBINDBUFFERPROC glBindBuffer;
-        static PFNGLBUFFERDATAPROC glBufferData;
-        static PFNGLUSEPROGRAMPROC glUseProgram;
-        static PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
-        static PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
-        static PFNGLUNIFORM1IPROC glUniform1i;
-        static PFNGLUNIFORM1FPROC glUniform1f;
-        static PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv;
-        static PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
-        static PFNGLGETATTRIBLOCATIONPROC glGetAttribLocation;
-        static PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation;
-        static PFNGLACTIVETEXTUREPROC glActiveTexture;
-#endif
-
         void ResetParticle(Particle &particle, bool initial);
 };
-
-#ifdef _WIN32
-PFNGLGENBUFFERSPROC Background::glGenBuffers = NULL;
-PFNGLDELETEBUFFERSPROC Background::glDeleteBuffers = NULL;
-PFNGLBINDBUFFERPROC Background::glBindBuffer = NULL;
-PFNGLBUFFERDATAPROC Background::glBufferData = NULL;
-PFNGLUSEPROGRAMPROC Background::glUseProgram = NULL;
-PFNGLENABLEVERTEXATTRIBARRAYPROC Background::glEnableVertexAttribArray = NULL;
-PFNGLDISABLEVERTEXATTRIBARRAYPROC Background::glDisableVertexAttribArray = NULL;
-PFNGLUNIFORM1IPROC Background::glUniform1i = NULL;
-PFNGLUNIFORM1FPROC Background::glUniform1f = NULL;
-PFNGLUNIFORMMATRIX4FVPROC Background::glUniformMatrix4fv = NULL;
-PFNGLVERTEXATTRIBPOINTERPROC Background::glVertexAttribPointer = NULL;
-PFNGLGETATTRIBLOCATIONPROC Background::glGetAttribLocation = NULL;
-PFNGLGETUNIFORMLOCATIONPROC Background::glGetUniformLocation = NULL;
-PFNGLACTIVETEXTUREPROC Background::glActiveTexture = NULL;
-#endif
 
 Background::Background(Texture &backgroundTexture, ShaderProgram &backgroundShader, Texture &particleTexture, ShaderProgram &particleShader, GLfloat screenRatio) :
     backgroundTexture(&backgroundTexture), particleTexture(&particleTexture), backgroundShader(&backgroundShader), particleShader(&particleShader), screenRatio(screenRatio)
 {
-#ifdef _WIN32
-    initGLFunction(glGenBuffers, "glGenBuffers");
-    initGLFunction(glDeleteBuffers, "glDeleteBuffers");
-    initGLFunction(glBindBuffer, "glBindBuffer");
-    initGLFunction(glBufferData, "glBufferData");
-    initGLFunction(glUseProgram, "glUseProgram");
-    initGLFunction(glEnableVertexAttribArray, "glEnableVertexAttribArray");
-    initGLFunction(glDisableVertexAttribArray, "glDisableVertexAttribArray");
-    initGLFunction(glUniform1i, "glUniform1i");
-    initGLFunction(glUniform1f, "glUniform1f");
-    initGLFunction(glUniformMatrix4fv, "glUniformMatrix4fv");
-    initGLFunction(glVertexAttribPointer, "glVertexAttribPointer");
-    initGLFunction(glGetAttribLocation, "glGetAttribLocation");
-    initGLFunction(glGetUniformLocation, "glGetUniformLocation");
-    initGLFunction(glActiveTexture, "glActiveTexture");
-#endif
-
     backgroundVertexAttribute = glGetAttribLocation(backgroundShader.GetProgram(), "vertexPosition");
     backgroundTextureAttribute = glGetAttribLocation(backgroundShader.GetProgram(), "vertexTexture");
     backgroundTextureUniform = glGetUniformLocation(backgroundShader.GetProgram(), "texture");
