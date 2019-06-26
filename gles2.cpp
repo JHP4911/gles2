@@ -142,7 +142,7 @@ class Window
         HANDLE eventLoopThread;
         HGLRC hRC;
         HDC hDC;
-        static queue<int32_t> *events;
+        static queue<int32_t> events;
 #endif
         uint32_t clientWidth, clientHeight;
 
@@ -154,7 +154,7 @@ class Window
 
 #ifdef _WIN32
 int32_t Window::exitCode = 0;
-queue<int32_t> *Window::events = NULL;
+queue<int32_t> Window::events = queue<int32_t>();
 #endif
 
 Window::Window()
@@ -282,7 +282,7 @@ Window::Window()
     fbMemSize = fInfo.smem_len;
     fbLineSize = vInfo.xres * vInfo.bits_per_pixel >> 3;
 
-    framebuffer = (uint8_t *)mmap(0, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0);
+    framebuffer = (uint8_t *)mmap(nullptr, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0);
     if (framebuffer == MAP_FAILED) {
         vc_dispmanx_resource_delete(dispmanResource);
         close(fbFd);
@@ -487,7 +487,6 @@ Window::Window()
     }
 
     hRC = hRC2;
-    events = new queue<int32_t>();
 #endif
 }
 
@@ -509,7 +508,6 @@ Window::~Window()
     eglTerminate(eglDisplay);
     SDL_Quit();
 #else
-    delete events;
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(hRC);
     ReleaseDC(hWnd, hDC);
@@ -558,9 +556,9 @@ int32_t Window::PollEvent()
         return WINDOW_EVENT_APPLICATION_TERMINATED;
 #else
     MSG msg;
-    if (!events->empty()) {
-        int32_t event = events->back();
-        events->pop();
+    if (!events.empty()) {
+        int32_t event = events.back();
+        events.pop();
         return event;
     } else if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT) {
@@ -580,10 +578,10 @@ int32_t Window::PollEvent()
 LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_CLOSE) {
-        events->push(WINDOW_EVENT_WINDOW_CLOSED);
+        events.push(WINDOW_EVENT_WINDOW_CLOSED);
         return 0;
     } else if ((msg == WM_KEYDOWN) && (wParam == VK_ESCAPE)) {
-        events->push(WINDOW_EVENT_ESC_KEY_PRESSED);
+        events.push(WINDOW_EVENT_ESC_KEY_PRESSED);
         return 0;
     } else if ((msg == WM_SETCURSOR) && (LOWORD(lParam) == HTCLIENT)) {
         SetCursor(NULL);
