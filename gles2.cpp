@@ -40,21 +40,6 @@ using std::vector;
 using std::min;
 #endif
 
-#define ROTATION_AXIS_X 0
-#define ROTATION_AXIS_Y 1
-#define ROTATION_AXIS_Z 2
-
-#define GL_SHADER_CODE_FROM_STRING 0x0
-#define GL_SHADER_CODE_FROM_FILE 0x1
-
-#define GL_FONT_TEXT_VERTICAL_CENTER 0x1
-#define GL_FONT_TEXT_HORIZONTAL_CENTER 0x2
-
-#define WINDOW_EVENT_NO_EVENT 0
-#define WINDOW_EVENT_ESC_KEY_PRESSED 1
-#define WINDOW_EVENT_WINDOW_CLOSED 2
-#define WINDOW_EVENT_APPLICATION_TERMINATED 3
-
 #define NUMBER_OF_PARTICLES 16
 
 class Exception : public exception
@@ -122,6 +107,13 @@ PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
 PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
 #endif
 
+enum WindowEvent {
+    WINDOW_EVENT_NO_EVENT,
+    WINDOW_EVENT_ESC_KEY_PRESSED,
+    WINDOW_EVENT_WINDOW_CLOSED,
+    WINDOW_EVENT_APPLICATION_TERMINATED
+};
+
 class Window
 {
     public:
@@ -136,7 +128,7 @@ class Window
         void Close();
         bool SwapBuffers();
         void GetClientSize(uint32_t &width, uint32_t &height);
-        int32_t PollEvent();
+        WindowEvent PollEvent();
     private:
 #ifndef _WIN32
         DISPMANX_DISPLAY_HANDLE_T dispmanDisplay;
@@ -158,7 +150,7 @@ class Window
         HANDLE eventLoopThread;
         HGLRC hRC;
         HDC hDC;
-        static queue<int32_t> events;
+        static queue<WindowEvent> events;
 #endif
         uint32_t clientWidth, clientHeight;
 
@@ -174,7 +166,7 @@ class Window
 
 #ifdef _WIN32
 int32_t Window::exitCode = 0;
-queue<int32_t> Window::events = queue<int32_t>();
+queue<WindowEvent> Window::events = queue<WindowEvent>();
 #endif
 
 Window::Window()
@@ -563,7 +555,7 @@ bool Window::SwapBuffers()
 #endif
 }
 
-int32_t Window::PollEvent()
+WindowEvent Window::PollEvent()
 {
 #ifndef _WIN32
     SDL_Event event;
@@ -576,7 +568,7 @@ int32_t Window::PollEvent()
 #else
     MSG msg;
     if (!events.empty()) {
-        int32_t event = events.back();
+        WindowEvent event = events.back();
         events.pop();
         return event;
     } else if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
@@ -661,10 +653,16 @@ void Window::GetClientSize(uint32_t &width, uint32_t &height)
     height = clientHeight;
 }
 
+
+enum ShaderSource {
+    GL_SHADER_CODE_FROM_STRING,
+    GL_SHADER_CODE_FROM_FILE
+};
+
 class ShaderProgram
 {
     public:
-        ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, GLenum srcType);
+        ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, ShaderSource srcType);
         ShaderProgram(const ShaderProgram &source) = delete;
         ShaderProgram& operator=(const ShaderProgram &source) = delete;
         virtual ~ShaderProgram();
@@ -675,10 +673,10 @@ class ShaderProgram
         GLuint fragmentShader;
         GLuint program;
 
-        GLuint LoadShader(const char *shaderSrc, GLenum srcType, GLenum shaderType);
+        GLuint LoadShader(const char *shaderSrc, ShaderSource srcType, GLenum shaderType);
 };
 
-ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, GLenum srcType)
+ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, ShaderSource srcType)
 {
     GLint isLinked;
 
@@ -735,7 +733,7 @@ GLuint ShaderProgram::GetProgram()
     return program;
 }
 
-GLuint ShaderProgram::LoadShader(const char *shaderSrc, GLenum srcType, GLenum shaderType)
+GLuint ShaderProgram::LoadShader(const char *shaderSrc, ShaderSource srcType, GLenum shaderType)
 {
     GLuint shader;
     GLint isCompiled, length;
@@ -849,6 +847,12 @@ GLuint Texture::GetHeight() {
     return height;
 }
 
+enum RotationType {
+    ROTATION_AXIS_X,
+    ROTATION_AXIS_Y,
+    ROTATION_AXIS_Z
+};
+
 class Matrix
 {
     public:
@@ -872,7 +876,7 @@ class Matrix
         static Matrix GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane);
         static Matrix GeneratePosition(GLfloat x, GLfloat y, GLfloat z);
         static Matrix GenerateScale(GLfloat x, GLfloat y, GLfloat z);
-        static Matrix GenerateRotation(GLfloat angle, GLuint axis);
+        static Matrix GenerateRotation(GLfloat angle, RotationType type);
     private:
         GLfloat *data;
         GLuint width;
@@ -960,7 +964,7 @@ Matrix Matrix::GenerateScale(GLfloat x, GLfloat y, GLfloat z)
     return result;
 }
 
-Matrix Matrix::GenerateRotation(GLfloat angle, GLuint axis)
+Matrix Matrix::GenerateRotation(GLfloat angle, RotationType type)
 {
     Matrix result(4, 4);
     GLfloat *data = result.GetData();
@@ -969,26 +973,28 @@ Matrix Matrix::GenerateRotation(GLfloat angle, GLuint axis)
     GLfloat sinAngle = (GLfloat)sin(angle);
     GLfloat cosAngle = (GLfloat)cos(angle);
 
-    if (axis == ROTATION_AXIS_X) {
-        data[0] = 1.0f;
-        data[5] = cosAngle;
-        data[6] = sinAngle;
-        data[9] = -sinAngle;
-        data[10] = cosAngle;
-    }
-    if (axis == ROTATION_AXIS_Y) {
-        data[0] = cosAngle;
-        data[2] = sinAngle;
-        data[5] = 1.0f;
-        data[8] = -sinAngle;
-        data[10] = cosAngle;
-    }
-    if (axis == ROTATION_AXIS_Z) {
-        data[0] = cosAngle;
-        data[1] = sinAngle;
-        data[4] = -sinAngle;
-        data[5] = cosAngle;
-        data[10] = 1.0f;
+    switch (type) {
+        case ROTATION_AXIS_X:
+            data[0] = 1.0f;
+            data[5] = cosAngle;
+            data[6] = sinAngle;
+            data[9] = -sinAngle;
+            data[10] = cosAngle;
+            break;
+        case ROTATION_AXIS_Y:
+            data[0] = cosAngle;
+            data[2] = sinAngle;
+            data[5] = 1.0f;
+            data[8] = -sinAngle;
+            data[10] = cosAngle;
+            break;
+        case ROTATION_AXIS_Z:
+        default:
+            data[0] = cosAngle;
+            data[1] = sinAngle;
+            data[4] = -sinAngle;
+            data[5] = cosAngle;
+            data[10] = 1.0f;
     }
 
     return result;
@@ -1187,6 +1193,9 @@ GLfloat FontChar::GetAdvance(uint16_t character)
 void FontChar::AddAdvance(CharAdvance advance) {
     advances.push_back(advance);
 }
+
+#define GL_FONT_TEXT_VERTICAL_CENTER 0x1
+#define GL_FONT_TEXT_HORIZONTAL_CENTER 0x2
 
 class Font
 {
