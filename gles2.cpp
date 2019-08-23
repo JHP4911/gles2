@@ -1115,8 +1115,6 @@ class FontChar
 {
     public:
         FontChar(string code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size);
-        FontChar(const FontChar &source);
-        FontChar& operator=(const FontChar &source);
 
         string GetCode();
         GLfloat GetWidth();
@@ -1137,22 +1135,6 @@ class FontChar
 FontChar::FontChar(string code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size) :
     code(code), width(width), offset(offset), textureRect(rect), size(size)
 {
-}
-
-FontChar::FontChar(const FontChar &source) :
-    code(source.code), width(source.width), offset(source.offset), textureRect(source.textureRect), size(source.size), advances(source.advances)
-{
-}
-
-FontChar& FontChar::operator=(const FontChar &source)
-{
-    code = source.code;
-    width = source.width;
-    offset = source.offset;
-    textureRect = source.textureRect;
-    size = source.size;
-    advances = source.advances;
-    return *this;
 }
 
 string FontChar::GetCode()
