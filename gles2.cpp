@@ -1,5 +1,6 @@
 #include <fstream>
 #include <cmath>
+#include <memory>
 #include "lodepng/lodepng.h"
 #ifndef _WIN32
 #include <iostream>
@@ -16,7 +17,6 @@
 #include <bcm_host.h>
 #else
 #include <queue>
-#include <sstream>
 #include <windows.h>
 #include <GL/gl.h>
 #include "GL/glext.h"
@@ -29,13 +29,14 @@ using std::cout;
 using std::endl;
 #else
 using std::queue;
-using std::ostringstream;
 #endif
 using std::ios;
 using std::ifstream;
 using std::string;
 using std::exception;
 using std::vector;
+using std::shared_ptr;
+using std::default_delete;
 #ifndef _MSC_VER
 using std::min;
 #endif
@@ -48,7 +49,7 @@ class Exception : public exception
         explicit Exception(string message);
         virtual ~Exception() throw();
 
-        virtual const char* what() const throw();
+        virtual const char *what() const throw();
     private:
         string exceptionMessage;
 };
@@ -62,7 +63,7 @@ Exception::~Exception() throw()
 {
 }
 
-const char* Exception::what() const throw()
+const char *Exception::what() const throw()
 {
     return exceptionMessage.c_str();
 }
@@ -122,9 +123,9 @@ class Window
 #endif
 
         Window(const Window &source) = delete;
-        Window& operator=(const Window &source) = delete;
+        Window &operator=(const Window &source) = delete;
         virtual ~Window();
-        static Window& Initialize();
+        static Window &Initialize();
         void Close();
         bool SwapBuffers();
         void GetClientSize(uint32_t &width, uint32_t &height);
@@ -591,9 +592,7 @@ T Window::InitGLFunction(string glFuncName)
 {
     T func = reinterpret_cast<T>(wglGetProcAddress(glFuncName.c_str()));
     if (func == nullptr) {
-        ostringstream oss;
-        oss << "Cannot initialize " << glFuncName << " function";
-        throw Exception(oss.str());
+        throw Exception(string("Cannot initialize ") + glFuncName + string(" function"));
     }
     return func;
 }
@@ -664,7 +663,7 @@ class ShaderProgram
     public:
         ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, ShaderSource srcType);
         ShaderProgram(const ShaderProgram &source) = delete;
-        ShaderProgram& operator=(const ShaderProgram &source) = delete;
+        ShaderProgram &operator=(const ShaderProgram &source) = delete;
         virtual ~ShaderProgram();
 
         GLuint GetProgram();
@@ -860,9 +859,8 @@ class Matrix
         Matrix(const Matrix &source);
         Matrix(GLuint width, GLuint height);
         Matrix(GLuint width, GLuint height, GLfloat *matrixData);
-        virtual ~Matrix();
 
-        GLfloat* GetData();
+        shared_ptr<GLfloat> &GetData();
 
         void GetSize(GLuint &width, GLuint &height);
         void SetSize(GLuint width, GLuint height);
@@ -870,15 +868,15 @@ class Matrix
         Matrix operator+(const Matrix &matrix);
         Matrix operator-(const Matrix &matrix);
         Matrix operator*(const Matrix &matrix);
-        Matrix& operator=(const Matrix &source);
-        Matrix& operator=(const GLfloat *sourceData);
+        Matrix &operator=(const Matrix &source);
+        Matrix &operator=(const GLfloat *sourceData);
 
         static Matrix GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane);
         static Matrix GeneratePosition(GLfloat x, GLfloat y, GLfloat z);
         static Matrix GenerateScale(GLfloat x, GLfloat y, GLfloat z);
         static Matrix GenerateRotation(GLfloat angle, RotationType type);
     private:
-        GLfloat *data;
+        shared_ptr<GLfloat> data;
         GLuint width;
         GLuint height;
 };
@@ -886,15 +884,15 @@ class Matrix
 Matrix::Matrix() :
     width(4), height(4)
 {
-    data = new GLfloat[4 * 4];
-    memset(data, 0, sizeof(GLfloat) * 4 * 4);
+    data = shared_ptr<GLfloat>(new GLfloat[4 * 4], default_delete<GLfloat[]>());
+    memset(data.get(), 0, sizeof(GLfloat) * 4 * 4);
 }
 
 Matrix::Matrix(const Matrix &source) :
     width(source.width), height(source.height)
 {
-    data = new GLfloat[width * height];
-    memcpy(data, source.data, sizeof(GLfloat) * width * height);
+    data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
+    memcpy(data.get(), source.data.get(), sizeof(GLfloat) * width * height);
 }
 
 Matrix::Matrix(GLuint width, GLuint height) :
@@ -903,8 +901,8 @@ Matrix::Matrix(GLuint width, GLuint height) :
     if ((width < 1) || (height < 1)) {
         throw Exception("Cannot create matrix - dimensions must be greater than 0");
     }
-    data = new GLfloat[width * height];
-    memset(data, 0, sizeof(GLfloat) * width * height);
+    data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
+    memset(data.get(), 0, sizeof(GLfloat) * width * height);
 }
 
 Matrix::Matrix(GLuint width, GLuint height, GLfloat *matrixData) :
@@ -913,19 +911,14 @@ Matrix::Matrix(GLuint width, GLuint height, GLfloat *matrixData) :
     if ((width < 1) || (height < 1)) {
         throw Exception("Cannot create matrix - dimensions must be greater than 0");
     }
-    data = new GLfloat[width * height];
-    memcpy(data, matrixData, sizeof(GLfloat) * width * height);
-}
-
-Matrix::~Matrix()
-{
-    delete [] data;
+    data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
+    memcpy(data.get(), matrixData, sizeof(GLfloat) * width * height);
 }
 
 Matrix Matrix::GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane)
 {
     Matrix result(4, 4);
-    GLfloat *data = result.GetData();
+    GLfloat *data = result.GetData().get();
 
     data[0] = 2.0f * nearPane / width;
     data[5] = 2.0f * nearPane / height;
@@ -939,7 +932,7 @@ Matrix Matrix::GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPan
 Matrix Matrix::GeneratePosition(GLfloat x, GLfloat y, GLfloat z)
 {
     Matrix result(4, 4);
-    GLfloat *data = result.GetData();
+    GLfloat *data = result.GetData().get();
 
     for (GLuint i = 0; i < 4; i++) {
         data[i + i * 4] = 1.0f;
@@ -954,7 +947,7 @@ Matrix Matrix::GeneratePosition(GLfloat x, GLfloat y, GLfloat z)
 Matrix Matrix::GenerateScale(GLfloat x, GLfloat y, GLfloat z)
 {
     Matrix result(4, 4);
-    GLfloat *data = result.GetData();
+    GLfloat *data = result.GetData().get();
 
     data[0] = x;
     data[5] = y;
@@ -967,7 +960,7 @@ Matrix Matrix::GenerateScale(GLfloat x, GLfloat y, GLfloat z)
 Matrix Matrix::GenerateRotation(GLfloat angle, RotationType type)
 {
     Matrix result(4, 4);
-    GLfloat *data = result.GetData();
+    GLfloat *data = result.GetData().get();
 
     data[15] = 1.0f;
     GLfloat sinAngle = (GLfloat)sin(angle);
@@ -1000,7 +993,7 @@ Matrix Matrix::GenerateRotation(GLfloat angle, RotationType type)
     return result;
 }
 
-GLfloat* Matrix::GetData()
+shared_ptr<GLfloat> &Matrix::GetData()
 {
     return data;
 }
@@ -1012,7 +1005,7 @@ Matrix Matrix::operator+(const Matrix &matrix)
     }
     Matrix result(width, height);
     for (GLuint i = 0; i < width * height; i++) {
-        result.data[i] = data[i] + matrix.data[i];
+        result.data.get()[i] = data.get()[i] + matrix.data.get()[i];
     }
     return result;
 }
@@ -1024,7 +1017,7 @@ Matrix Matrix::operator-(const Matrix &matrix)
     }
     Matrix result(width, height);
     for (GLuint i = 0; i < width * height; i++) {
-        result.data[i] = data[i] - matrix.data[i];
+        result.data.get()[i] = data.get()[i] - matrix.data.get()[i];
     }
     return result;
 }
@@ -1039,29 +1032,28 @@ Matrix Matrix::operator*(const Matrix &matrix)
         for (GLuint i = 0; i < result.width; i++) {
             GLfloat m = 0.0f;
             for (GLuint k = 0; k < width; k++) {
-                m += data[j + k * height] * matrix.data[k + i * matrix.height];
+                m += data.get()[j + k * height] * matrix.data.get()[k + i * matrix.height];
             }
-            result.data[j + i * result.height] = m;
+            result.data.get()[j + i * result.height] = m;
         }
     }
     return result;
 }
 
-Matrix& Matrix::operator=(const Matrix &source)
+Matrix &Matrix::operator=(const Matrix &source)
 {
     if ((width != source.width) || (height != source.height)) {
-        delete [] data;
         width = source.width;
         height = source.height;
-        data = new GLfloat[this->width * this->height];
+        data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
     }
-    memcpy(data, source.data, sizeof(GLfloat) * width * height);
+    memcpy(data.get(), source.data.get(), sizeof(GLfloat) * width * height);
     return *this;
 }
 
-Matrix& Matrix::operator=(const GLfloat *sourceData)
+Matrix &Matrix::operator=(const GLfloat *sourceData)
 {
-    memcpy(data, sourceData, sizeof(GLfloat) * width * height);
+    memcpy(data.get(), sourceData, sizeof(GLfloat) * width * height);
     return *this;
 }
 
@@ -1079,15 +1071,14 @@ void Matrix::SetSize(GLuint width, GLuint height)
     if ((this->width == width) && (this->height == height)) {
         return;
     }
-    GLfloat *oldData = data;
-    data = new GLfloat[width * height];
-    memset(data, 0, sizeof(GLfloat) * width * height);
+    shared_ptr<GLfloat> oldData = data;
+    data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
+    memset(data.get(), 0, sizeof(GLfloat) * width * height);
     for (GLuint i = 0; i < min(this->width, width); i++) {
-        memcpy(&data[i * height], &oldData[i * this->height], sizeof(GLfloat) * min(this->height, height));
+        memcpy(&data.get()[i * height], &oldData.get()[i * this->height], sizeof(GLfloat) * min(this->height, height));
     }
     this->width = width;
     this->height = height;
-    delete [] oldData;
 }
 
 struct CharAdvance
@@ -1184,7 +1175,7 @@ class Font
     public:
         Font(const char *fontSrc, Texture &texture, ShaderProgram &shader);
         Font(const Font &source) = delete;
-        Font& operator=(const Font &source) = delete;
+        Font &operator=(const Font &source) = delete;
         virtual ~Font();
 
         void RenderText(string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType);
@@ -1443,7 +1434,7 @@ void Font::RenderText(string text, GLfloat left, GLfloat top, GLfloat height, GL
     glUniform1i(textureUniform, 0);
 
     Matrix position = Matrix::GeneratePosition(left - ((hookType & GL_FONT_TEXT_VERTICAL_CENTER) ? renderWidth / 2.0f : 0.0f), top + ((hookType & GL_FONT_TEXT_HORIZONTAL_CENTER) ? renderHeight / 2.0f : 0.0f), 0.0f);
-    glUniformMatrix4fv(positionUniform, 1, GL_FALSE, (Matrix::GenerateScale(1.0f / screenRatio, 1.0f, 0.0f) * position).GetData());
+    glUniformMatrix4fv(positionUniform, 1, GL_FALSE, (Matrix::GenerateScale(1.0f / screenRatio, 1.0f, 0.0f) * position).GetData().get());
 
     glUniform1f(opacityUniform, 1.0f);
 
@@ -1477,7 +1468,7 @@ class Background
     public:
         Background(Texture &backgroundTexture, ShaderProgram &backgroundShader, Texture &particleTexture, ShaderProgram &particleShader, GLfloat screenRatio);
         Background(const Background &source) = delete;
-        Background& operator=(const Background &source) = delete;
+        Background &operator=(const Background &source) = delete;
         virtual ~Background();
 
         void Render();
@@ -1583,7 +1574,7 @@ void Background::Render()
     glEnableVertexAttribArray(particleTextureAttribute);
 
     for (uint32_t i = 0; i < particles.size(); i++) {
-        glUniformMatrix4fv(particlePositionUniform, 1, GL_FALSE, (screen * particles[i].position * particles[i].scale).GetData());
+        glUniformMatrix4fv(particlePositionUniform, 1, GL_FALSE, (screen * particles[i].position * particles[i].scale).GetData().get());
 
         glUniform1f(particleOpacityUniform, particles[i].opacity * sin(particles[i].life * 3.14159265358979f));
 
@@ -1607,8 +1598,8 @@ void Background::Animate()
     for (uint32_t i = 0; i < particles.size(); i++) {
         particles[i].position = particles[i].position * particles[i].delta;
         particles[i].life += particles[i].lifeDelta;
-        GLfloat *position = particles[i].position.GetData();
-        GLfloat *scale = particles[i].scale.GetData();
+        GLfloat *position = particles[i].position.GetData().get();
+        GLfloat *scale = particles[i].scale.GetData().get();
         if (position[12] < -screenRatio - scale[0]) {
             position[12] = screenRatio + scale[0];
         }
