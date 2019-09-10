@@ -1306,13 +1306,7 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
     opacityUniform = glGetUniformLocation(shader.GetProgram(), "opacity");
 
     glGenBuffers(1, &vertexBuffer);
-
-    try {
-        glGenBuffers(1, &textureBuffer);
-    } catch (Exception e) {
-        glDeleteBuffers(1, &vertexBuffer);
-        throw e;
-    }
+    glGenBuffers(1, &textureBuffer);
 }
 
 Font::~Font()
@@ -1497,13 +1491,7 @@ Background::Background(Texture &backgroundTexture, ShaderProgram &backgroundShad
     particleOpacityUniform = glGetUniformLocation(particleShader.GetProgram(), "opacity");
 
     glGenBuffers(1, &vertexBuffer);
-
-    try {
-        glGenBuffers(1, &textureBuffer);
-    } catch (Exception e) {
-        glDeleteBuffers(1, &vertexBuffer);
-        throw e;
-    }
+    glGenBuffers(1, &textureBuffer);
 
     for (uint32_t i = 0; i < NUMBER_OF_PARTICLES; i++) {
         Particle particle;
