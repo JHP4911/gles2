@@ -46,7 +46,7 @@ using std::min;
 class Exception : public exception
 {
     public:
-        explicit Exception(string message);
+        Exception(string message);
         virtual ~Exception() throw();
 
         virtual const char *what() const throw();
@@ -295,7 +295,7 @@ Window::Window()
     fbMemSize = fInfo.smem_len;
     fbLineSize = vInfo.xres * vInfo.bits_per_pixel >> 3;
 
-    framebuffer = (uint8_t *)mmap(nullptr, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0);
+    framebuffer = reinterpret_cast<uint8_t *>(mmap(nullptr, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0));
     if (framebuffer == MAP_FAILED) {
         vc_dispmanx_resource_delete(dispmanResource);
         close(fbFd);
@@ -367,8 +367,8 @@ Window::Window()
 
     RECT clientArea;
     memset(&clientArea, 0, sizeof(RECT));
-    clientArea.right = (long)clientWidth;
-    clientArea.bottom = (long)clientHeight;
+    clientArea.right = clientWidth;
+    clientArea.bottom = clientHeight;
 
     if(!AdjustWindowRectEx(&clientArea, style, false, exStyle)) {
         UnregisterClass("OpenGLWindow", hInstance);
@@ -574,7 +574,7 @@ WindowEvent Window::PollEvent()
         return event;
     } else if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT) {
-            exitCode = (int32_t)msg.wParam;
+            exitCode = msg.wParam;
             return WINDOW_EVENT_APPLICATION_TERMINATED;
         } else {
             TranslateMessage(&msg);
@@ -746,15 +746,15 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, ShaderSource srcType, GL
                 return 0;
             }
             file.seekg(0, ios::end);
-            length = (GLint)file.tellg();
+            length = static_cast<GLint>(file.tellg());
             file.seekg(0, ios::beg);
             code = new GLchar[length];
             file.read(code, length);
             file.close();
             break;
         case GL_SHADER_CODE_FROM_STRING:
-            code = (GLchar *)shaderSrc;
-            length = (GLint)strlen(code);
+            code = const_cast<GLchar *>(shaderSrc);
+            length = static_cast<GLint>(strlen(code));
             break;
         default:
             return 0;
@@ -763,7 +763,7 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, ShaderSource srcType, GL
     shader = glCreateShader(shaderType);
     if (shader == 0)
         return 0;
-    glShaderSource(shader, 1, (const GLchar **)&code, &length);
+    glShaderSource(shader, 1, const_cast<const GLchar **>(&code), &length);
     glCompileShader(shader);
     glGetShaderiv(shader, GL_COMPILE_STATUS, &isCompiled);
     if (!isCompiled) {
@@ -963,8 +963,8 @@ Matrix Matrix::GenerateRotation(GLfloat angle, RotationType type)
     GLfloat *data = result.GetData().get();
 
     data[15] = 1.0f;
-    GLfloat sinAngle = (GLfloat)sin(angle);
-    GLfloat cosAngle = (GLfloat)cos(angle);
+    GLfloat sinAngle = static_cast<GLfloat>(sin(angle));
+    GLfloat cosAngle = static_cast<GLfloat>(cos(angle));
 
     switch (type) {
         case ROTATION_AXIS_X:
@@ -1199,100 +1199,100 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
     if (!file.is_open()) {
         throw Exception("Cannot open font file");
     }
-    file.read((char *)buffer, 4);
-    if ((file.rdstate() & ifstream::eofbit) || string((char *)buffer, 4) != "FONT") {
+    file.read(reinterpret_cast<char *>(buffer), 4);
+    if ((file.rdstate() & ifstream::eofbit) || string(reinterpret_cast<char *>(buffer), 4) != "FONT") {
         file.close();
         throw Exception("Cannot load font file, wrong file format");
     }
-    file.read((char *)buffer, sizeof(uint8_t));
+    file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
         throw Exception("Cannot load font file, wrong file format");
     }
-    uint8_t length = *((uint8_t *)buffer);
-    file.read((char *)buffer, length * sizeof(uint8_t));
+    uint8_t length = *(reinterpret_cast<uint8_t *>(buffer));
+    file.read(reinterpret_cast<char *>(buffer), length * sizeof(uint8_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
         throw Exception("Cannot load font file, wrong file format");
     }
-    name = string((char *)buffer, length * sizeof(uint8_t));
-    file.read((char *)buffer, sizeof(uint8_t));
+    name = string(reinterpret_cast<char *>(buffer), length * sizeof(uint8_t));
+    file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
         throw Exception("Cannot load font file, wrong file format");
     }
-    uint8_t height = *((uint8_t *)buffer);
-    file.read((char *)buffer, sizeof(uint16_t));
+    uint8_t height = *(reinterpret_cast<uint8_t *>(buffer));
+    file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
         throw Exception("Cannot load font file, wrong file format");
     }
     uint16_t chars = *buffer;
     for (uint16_t i = 0; i < chars; i++) {
-        file.read((char *)buffer, sizeof(uint8_t));
+        file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
         }
-        uint8_t size = *((uint8_t *)buffer);
-        file.read((char *)buffer, size * sizeof(uint8_t));
+        uint8_t size = *(reinterpret_cast<uint8_t *>(buffer));
+        file.read(reinterpret_cast<char *>(buffer), size * sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
         }
-        string code = string((char *)buffer, size * sizeof(uint8_t));
-        file.read((char *)buffer, sizeof(uint8_t));
+        string code = string(reinterpret_cast<char *>(buffer), size * sizeof(uint8_t));
+        file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
         }
-        GLfloat width = *((uint8_t *)buffer) / (GLfloat)height;
-        file.read((char *)buffer, 2 * sizeof(uint8_t));
+        GLfloat width = *(reinterpret_cast<uint8_t *>(buffer)) / static_cast<GLfloat>(height);
+        file.read(reinterpret_cast<char *>(buffer), 2 * sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
         }
         CharOffset offset = {
-            ((int8_t *)buffer)[0] / (GLfloat)height,
-            ((int8_t *)buffer)[1] / (GLfloat)height
+            (reinterpret_cast<int8_t *>(buffer))[0] / static_cast<GLfloat>(height),
+            (reinterpret_cast<int8_t *>(buffer))[1] / static_cast<GLfloat>(height)
         };
-        file.read((char *)buffer, 4 * sizeof(uint16_t));
+        file.read(reinterpret_cast<char *>(buffer), 4 * sizeof(uint16_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
         }
         TextureRect textureRect = {
-            buffer[0] / (GLfloat)texture.GetWidth(),
-            buffer[1] / (GLfloat)texture.GetHeight(),
-            buffer[2] / (GLfloat)texture.GetWidth(),
-            buffer[3] / (GLfloat)texture.GetHeight()
+            buffer[0] / static_cast<GLfloat>(texture.GetWidth()),
+            buffer[1] / static_cast<GLfloat>(texture.GetHeight()),
+            buffer[2] / static_cast<GLfloat>(texture.GetWidth()),
+            buffer[3] / static_cast<GLfloat>(texture.GetHeight())
         };
         CharSize dimensions = {
-            buffer[2] / (GLfloat)height,
-            buffer[3] / (GLfloat)height
+            buffer[2] / static_cast<GLfloat>(height),
+            buffer[3] / static_cast<GLfloat>(height)
         };
         FontChar fontChar(code, width, offset, textureRect, dimensions);
-        file.read((char *)buffer, sizeof(uint16_t));
+        file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
             throw Exception("Cannot load font file, wrong file format");
         }
         uint16_t advances = *buffer;
         for (uint16_t j = 0; j < advances; j++) {
-            file.read((char *)buffer, sizeof(uint16_t));
+            file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
             if (file.rdstate() & ifstream::eofbit) {
                 file.close();
                 throw Exception("Cannot load font file, wrong file format");
             }
             uint16_t character = *buffer;
-            file.read((char *)buffer, sizeof(uint8_t));
+            file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
             if (file.rdstate() & ifstream::eofbit) {
                 file.close();
                 throw Exception("Cannot load font file, wrong file format");
             }
             fontChar.AddAdvance({
                 character,
-                *((int8_t *)buffer) / (GLfloat)height
+                *(reinterpret_cast<int8_t *>(buffer)) / static_cast<GLfloat>(height)
             });
         }
         AddCharacter(fontChar);
@@ -1317,7 +1317,7 @@ Font::~Font()
 
 void Font::AddCharacter(FontChar fontChar)
 {
-    uint16_t begin = 0, end = (uint16_t)font.size();
+    uint16_t begin = 0, end = static_cast<uint16_t>(font.size());
     while (begin != end) {
         uint16_t check = (begin + end) >> 1;
         if (font[check].GetCode() < fontChar.GetCode()) {
@@ -1331,7 +1331,7 @@ void Font::AddCharacter(FontChar fontChar)
 }
 
 FontChar Font::GetCharacter(string text, uint32_t offset, uint16_t &index) {
-    uint16_t begin = 0, end = (uint16_t)font.size();
+    uint16_t begin = 0, end = static_cast<uint16_t>(font.size());
     while (begin != end) {
         uint16_t check = (begin + end) >> 1;
         string code = font[check].GetCode();
@@ -1641,7 +1641,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         uint32_t width, height;
         window->GetClientSize(width, height);
         glViewport(0, 0, width, height);
-        GLfloat screenRatio = width / (GLfloat)height;
+        GLfloat screenRatio = width / static_cast<GLfloat>(height);
 
         Texture fontTexture("images/euphemia.png");
         ShaderProgram fontShader("shaders/particle.vs", "shaders/particle.fs", GL_SHADER_CODE_FROM_FILE);
