@@ -353,7 +353,7 @@ Window::Window()
     wcex.hInstance = hInstance;
     wcex.hIcon = LoadIcon(NULL, IDI_APPLICATION);
     wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-    wcex.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wcex.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     wcex.lpszMenuName = NULL;
     wcex.lpszClassName = "OpenGLWindow";
     wcex.hIconSm = LoadIcon(NULL, IDI_APPLICATION);;
