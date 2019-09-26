@@ -144,7 +144,7 @@ class Window
 
 #ifdef _WIN32
 int32_t Window::exitCode = 0;
-queue<WindowEvent> Window::events = queue<WindowEvent>();
+queue<WindowEvent> Window::events;
 #endif
 
 Window::Window()
