@@ -1,4 +1,5 @@
 #include <fstream>
+#include <cstring>
 #include <cmath>
 #include <memory>
 #include "lodepng/lodepng.h"
@@ -342,7 +343,7 @@ Window::Window()
     DWORD style = WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX;
 
     RECT clientArea;
-    memset(&clientArea, 0, sizeof(RECT));
+    std::memset(&clientArea, 0, sizeof(RECT));
     clientArea.right = clientWidth;
     clientArea.bottom = clientHeight;
 
@@ -374,7 +375,7 @@ Window::Window()
     }
 
     PIXELFORMATDESCRIPTOR pfd;
-    memset(&pfd, 0, sizeof(pfd));
+    std::memset(&pfd, 0, sizeof(pfd));
     pfd.nSize = sizeof(pfd);
     pfd.nVersion = 1;
     pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
@@ -861,14 +862,14 @@ Matrix::Matrix() :
     width(4), height(4)
 {
     data = shared_ptr<GLfloat>(new GLfloat[4 * 4], default_delete<GLfloat[]>());
-    memset(data.get(), 0, sizeof(GLfloat) * 4 * 4);
+    std::memset(data.get(), 0, sizeof(GLfloat) * 4 * 4);
 }
 
 Matrix::Matrix(const Matrix &source) :
     width(source.width), height(source.height)
 {
     data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
-    memcpy(data.get(), source.data.get(), sizeof(GLfloat) * width * height);
+    std::memcpy(data.get(), source.data.get(), sizeof(GLfloat) * width * height);
 }
 
 Matrix::Matrix(GLuint width, GLuint height) :
@@ -878,7 +879,7 @@ Matrix::Matrix(GLuint width, GLuint height) :
         throw runtime_error("Cannot create matrix - dimensions must be greater than 0");
     }
     data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
-    memset(data.get(), 0, sizeof(GLfloat) * width * height);
+    std::memset(data.get(), 0, sizeof(GLfloat) * width * height);
 }
 
 Matrix::Matrix(GLuint width, GLuint height, GLfloat *matrixData) :
@@ -888,7 +889,7 @@ Matrix::Matrix(GLuint width, GLuint height, GLfloat *matrixData) :
         throw runtime_error("Cannot create matrix - dimensions must be greater than 0");
     }
     data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
-    memcpy(data.get(), matrixData, sizeof(GLfloat) * width * height);
+    std::memcpy(data.get(), matrixData, sizeof(GLfloat) * width * height);
 }
 
 Matrix Matrix::GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane)
@@ -1023,13 +1024,13 @@ Matrix &Matrix::operator=(const Matrix &source)
         height = source.height;
         data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
     }
-    memcpy(data.get(), source.data.get(), sizeof(GLfloat) * width * height);
+    std::memcpy(data.get(), source.data.get(), sizeof(GLfloat) * width * height);
     return *this;
 }
 
 Matrix &Matrix::operator=(const GLfloat *sourceData)
 {
-    memcpy(data.get(), sourceData, sizeof(GLfloat) * width * height);
+    std::memcpy(data.get(), sourceData, sizeof(GLfloat) * width * height);
     return *this;
 }
 
@@ -1049,9 +1050,9 @@ void Matrix::SetSize(GLuint width, GLuint height)
     }
     shared_ptr<GLfloat> oldData = data;
     data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
-    memset(data.get(), 0, sizeof(GLfloat) * width * height);
+    std::memset(data.get(), 0, sizeof(GLfloat) * width * height);
     for (GLuint i = 0; i < min(this->width, width); i++) {
-        memcpy(&data.get()[i * height], &oldData.get()[i * this->height], sizeof(GLfloat) * min(this->height, height));
+        std::memcpy(&data.get()[i * height], &oldData.get()[i * this->height], sizeof(GLfloat) * min(this->height, height));
     }
     this->width = width;
     this->height = height;
