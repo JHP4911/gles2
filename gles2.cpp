@@ -34,6 +34,7 @@ using std::ios;
 using std::ifstream;
 using std::string;
 using std::exception;
+using std::runtime_error;
 using std::vector;
 using std::shared_ptr;
 using std::default_delete;
@@ -42,31 +43,6 @@ using std::min;
 #endif
 
 #define NUMBER_OF_PARTICLES 16
-
-class Exception : public exception
-{
-    public:
-        Exception(string message);
-        virtual ~Exception() throw();
-
-        virtual const char *what() const throw();
-    private:
-        string exceptionMessage;
-};
-
-Exception::Exception(string message) :
-    exceptionMessage(message)
-{
-}
-
-Exception::~Exception() throw()
-{
-}
-
-const char *Exception::what() const throw()
-{
-    return exceptionMessage.c_str();
-}
 
 #ifdef _WIN32
 void usleep(uint32_t uSec)
@@ -176,7 +152,7 @@ Window::Window()
     bcm_host_init();
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        throw Exception("Cannot create SDL window");
+        throw runtime_error("Cannot create SDL window");
     }
 
     SDL_WM_SetCaption("SDL Window", "SDL Icon");
@@ -184,18 +160,18 @@ Window::Window()
     SDL_Surface *sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
     if (sdlScreen == nullptr) {
         SDL_Quit();
-        throw Exception("Cannot create SDL window");
+        throw runtime_error("Cannot create SDL window");
     }
 
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (eglDisplay == EGL_NO_DISPLAY) {
         SDL_Quit();
-        throw Exception("Cannot obtain EGL display connection");
+        throw runtime_error("Cannot obtain EGL display connection");
     }
 
     if (eglInitialize(eglDisplay, nullptr, nullptr) != EGL_TRUE) {
         SDL_Quit();
-        throw Exception("Cannot initialize EGL display connection");
+        throw runtime_error("Cannot initialize EGL display connection");
     }
 
     static const EGLint attribList[] =
@@ -214,13 +190,13 @@ Window::Window()
     if (eglChooseConfig(eglDisplay, attribList, &config, 1, &numConfig) != EGL_TRUE) {
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw Exception("Cannot obtain EGL frame buffer configuration");
+        throw runtime_error("Cannot obtain EGL frame buffer configuration");
     }
 
     if (eglBindAPI(EGL_OPENGL_ES_API) != EGL_TRUE) {
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw Exception("Cannot set rendering API");
+        throw runtime_error("Cannot set rendering API");
 	}
 
     static const EGLint contextAttrib[] =
@@ -233,14 +209,14 @@ Window::Window()
     if (eglContext == EGL_NO_CONTEXT) {
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw Exception("Cannot create EGL rendering context");
+        throw runtime_error("Cannot create EGL rendering context");
     }
 
     if (graphics_get_display_size(0, &clientWidth, &clientHeight) < 0) {
         eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw Exception("Cannot obtain screen resolution");
+        throw runtime_error("Cannot obtain screen resolution");
     }
 
     VC_RECT_T dstRect, srcRect;
@@ -270,7 +246,7 @@ Window::Window()
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw Exception("Cannot open secondary framebuffer");
+        throw runtime_error("Cannot open secondary framebuffer");
     }
     if (ioctl(fbFd, FBIOGET_FSCREENINFO, &fInfo) ||
         ioctl(fbFd, FBIOGET_VSCREENINFO, &vInfo)) {
@@ -279,7 +255,7 @@ Window::Window()
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw Exception("Cannot access secondary framebuffer information");
+        throw runtime_error("Cannot access secondary framebuffer information");
     }
 
     dispmanResource = vc_dispmanx_resource_create(VC_IMAGE_RGB565, vInfo.xres, vInfo.yres, &image);
@@ -289,7 +265,7 @@ Window::Window()
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw Exception("Cannot initialize secondary display");
+        throw runtime_error("Cannot initialize secondary display");
     }
 
     fbMemSize = fInfo.smem_len;
@@ -303,7 +279,7 @@ Window::Window()
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw Exception("Cannot initialize secondary framebuffer memory mapping");
+        throw runtime_error("Cannot initialize secondary framebuffer memory mapping");
     }
 
     vc_dispmanx_rect_set(&dispmanRect, 0, 0, vInfo.xres, vInfo.yres);
@@ -332,7 +308,7 @@ Window::Window()
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw Exception("Cannot create new EGL window surface");
+        throw runtime_error("Cannot create new EGL window surface");
     }
 #else
 #ifndef FORCE_FULLSCREEN
@@ -359,7 +335,7 @@ Window::Window()
     wcex.hIconSm = LoadIcon(NULL, IDI_APPLICATION);;
 
     if (!RegisterClassEx(&wcex)) {
-        throw Exception("Cannot create OpenGL window");
+        throw runtime_error("Cannot create OpenGL window");
     }
 
     DWORD exStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
@@ -372,7 +348,7 @@ Window::Window()
 
     if(!AdjustWindowRectEx(&clientArea, style, false, exStyle)) {
         UnregisterClass("OpenGLWindow", hInstance);
-        throw Exception("Cannot create OpenGL window");
+        throw runtime_error("Cannot create OpenGL window");
     }
 
     hWnd = CreateWindowEx(exStyle, "OpenGLWindow", "OpenGL Window", style, CW_USEDEFAULT, CW_USEDEFAULT,
@@ -383,10 +359,10 @@ Window::Window()
     SetWindowPos(hWnd, HWND_TOP, 0, 0, clientWidth, clientHeight, SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
 #endif
 
-	if (hWnd == NULL) {
+    if (hWnd == NULL) {
         UnregisterClass("OpenGLWindow", hInstance);
-        throw Exception("Cannot create OpenGL window");
-	}
+        throw runtime_error("Cannot create OpenGL window");
+    }
 
     ShowWindow(hWnd, SW_SHOW);
 
@@ -394,7 +370,7 @@ Window::Window()
     if (hDC == NULL) {
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw Exception("Cannot obtain device context handle");
+        throw runtime_error("Cannot obtain device context handle");
     }
 
     PIXELFORMATDESCRIPTOR pfd;
@@ -412,14 +388,14 @@ Window::Window()
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw Exception("Cannot obtain correct pixel format configuration");
+        throw runtime_error("Cannot obtain correct pixel format configuration");
     }
 
     if (!SetPixelFormat(hDC, pixelFormat, &pfd)) {
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw Exception("Cannot set correct pixel format configuration");
+        throw runtime_error("Cannot set correct pixel format configuration");
     }
 
     hRC = wglCreateContext(hDC);
@@ -427,7 +403,7 @@ Window::Window()
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw Exception("Cannot create OpenGL rendering context");
+        throw runtime_error("Cannot create OpenGL rendering context");
     }
 #endif
 
@@ -446,7 +422,7 @@ Window::Window()
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw Exception("Cannot attach EGL rendering context to EGL surface");
+        throw runtime_error("Cannot attach EGL rendering context to EGL surface");
     }
 
     quit = false;
@@ -456,7 +432,7 @@ Window::Window()
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw Exception("Cannot attach OpenGL rendering context to thread");
+        throw runtime_error("Cannot attach OpenGL rendering context to thread");
     }
 
     GLint attribs[] = {
@@ -468,7 +444,7 @@ Window::Window()
 
     try {
         InitGL();
-    } catch (Exception e) {
+    } catch (runtime_error e) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
@@ -484,7 +460,7 @@ Window::Window()
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw Exception("Cannot create OpenGL rendering context");
+        throw runtime_error("Cannot create OpenGL rendering context");
     }
 
     wglDeleteContext(hRC);
@@ -495,7 +471,7 @@ Window::Window()
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw Exception("Cannot attach OpenGL rendering context to thread");
+        throw runtime_error("Cannot attach OpenGL rendering context to thread");
     }
 
     hRC = hRC2;
@@ -592,7 +568,7 @@ T Window::InitGLFunction(string glFuncName)
 {
     T func = reinterpret_cast<T>(wglGetProcAddress(glFuncName.c_str()));
     if (func == nullptr) {
-        throw Exception(string("Cannot initialize ") + glFuncName + string(" function"));
+        throw runtime_error(string("Cannot initialize ") + glFuncName + string(" function"));
     }
     return func;
 }
@@ -681,18 +657,18 @@ ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentSh
 
     vertexShader = LoadShader(vertexShaderSrc, srcType, GL_VERTEX_SHADER);
     if (vertexShader == 0) {
-        throw Exception("Cannot load vertex shader");
+        throw runtime_error("Cannot load vertex shader");
     }
     fragmentShader = LoadShader(fragmentShaderSrc, srcType, GL_FRAGMENT_SHADER);
     if (fragmentShader == 0) {
         glDeleteShader(vertexShader);
-        throw Exception("Cannot load fragment shader");
+        throw runtime_error("Cannot load fragment shader");
     }
     program = glCreateProgram();
     if (program == 0) {
         glDeleteShader(fragmentShader);
         glDeleteShader(vertexShader);
-        throw Exception("Cannot create shader program");
+        throw runtime_error("Cannot create shader program");
     }
     glAttachShader(program, vertexShader);
     glAttachShader(program, fragmentShader);
@@ -716,7 +692,7 @@ ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentSh
         glDeleteProgram(program);
         glDeleteShader(fragmentShader);
         glDeleteShader(vertexShader);
-        throw Exception("Error while linking shader");
+        throw runtime_error("Error while linking shader");
     }
 }
 
@@ -810,7 +786,7 @@ Texture::Texture(const char *textureSrc)
     vector<uint8_t> data;
     GLuint error = lodepng::decode(data, width, height, textureSrc);
     if (error) {
-        throw Exception("Cannot load texture");
+        throw runtime_error("Cannot load texture");
     }
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
@@ -899,7 +875,7 @@ Matrix::Matrix(GLuint width, GLuint height) :
     width(width), height(height)
 {
     if ((width < 1) || (height < 1)) {
-        throw Exception("Cannot create matrix - dimensions must be greater than 0");
+        throw runtime_error("Cannot create matrix - dimensions must be greater than 0");
     }
     data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
     memset(data.get(), 0, sizeof(GLfloat) * width * height);
@@ -909,7 +885,7 @@ Matrix::Matrix(GLuint width, GLuint height, GLfloat *matrixData) :
     width(width), height(height)
 {
     if ((width < 1) || (height < 1)) {
-        throw Exception("Cannot create matrix - dimensions must be greater than 0");
+        throw runtime_error("Cannot create matrix - dimensions must be greater than 0");
     }
     data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
     memcpy(data.get(), matrixData, sizeof(GLfloat) * width * height);
@@ -1001,7 +977,7 @@ shared_ptr<GLfloat> &Matrix::GetData()
 Matrix Matrix::operator+(const Matrix &matrix)
 {
     if ((width != matrix.width) || (height != matrix.height)) {
-        throw Exception("Cannot add matrices - incompatible matrix dimensions");
+        throw runtime_error("Cannot add matrices - incompatible matrix dimensions");
     }
     Matrix result(width, height);
     for (GLuint i = 0; i < width * height; i++) {
@@ -1013,7 +989,7 @@ Matrix Matrix::operator+(const Matrix &matrix)
 Matrix Matrix::operator-(const Matrix &matrix)
 {
     if ((width != matrix.width) || (height != matrix.height)) {
-        throw Exception("Cannot subtract matrices - incompatible matrix dimensions");
+        throw runtime_error("Cannot subtract matrices - incompatible matrix dimensions");
     }
     Matrix result(width, height);
     for (GLuint i = 0; i < width * height; i++) {
@@ -1025,7 +1001,7 @@ Matrix Matrix::operator-(const Matrix &matrix)
 Matrix Matrix::operator*(const Matrix &matrix)
 {
     if (width != matrix.height) {
-        throw Exception("Cannot multiply matrices - incompatible matrix dimensions");
+        throw runtime_error("Cannot multiply matrices - incompatible matrix dimensions");
     }
     Matrix result(matrix.width, height);
     for (GLuint j = 0; j < result.height; j++) {
@@ -1066,7 +1042,7 @@ void Matrix::GetSize(GLuint &width, GLuint &height)
 void Matrix::SetSize(GLuint width, GLuint height)
 {
     if ((width < 1) || (height < 1)) {
-        throw Exception("Cannot resize matrix - dimensions must be greater than 0");
+        throw runtime_error("Cannot resize matrix - dimensions must be greater than 0");
     }
     if ((this->width == width) && (this->height == height)) {
         return;
@@ -1197,60 +1173,60 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
     uint16_t buffer[256];
     file.open(fontSrc, ifstream::binary);
     if (!file.is_open()) {
-        throw Exception("Cannot open font file");
+        throw runtime_error("Cannot open font file");
     }
     file.read(reinterpret_cast<char *>(buffer), 4);
     if ((file.rdstate() & ifstream::eofbit) || string(reinterpret_cast<char *>(buffer), 4) != "FONT") {
         file.close();
-        throw Exception("Cannot load font file, wrong file format");
+        throw runtime_error("Cannot load font file, wrong file format");
     }
     file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
-        throw Exception("Cannot load font file, wrong file format");
+        throw runtime_error("Cannot load font file, wrong file format");
     }
     uint8_t length = *(reinterpret_cast<uint8_t *>(buffer));
     file.read(reinterpret_cast<char *>(buffer), length * sizeof(uint8_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
-        throw Exception("Cannot load font file, wrong file format");
+        throw runtime_error("Cannot load font file, wrong file format");
     }
     name = string(reinterpret_cast<char *>(buffer), length * sizeof(uint8_t));
     file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
-        throw Exception("Cannot load font file, wrong file format");
+        throw runtime_error("Cannot load font file, wrong file format");
     }
     uint8_t height = *(reinterpret_cast<uint8_t *>(buffer));
     file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
     if (file.rdstate() & ifstream::eofbit) {
         file.close();
-        throw Exception("Cannot load font file, wrong file format");
+        throw runtime_error("Cannot load font file, wrong file format");
     }
     uint16_t chars = *buffer;
     for (uint16_t i = 0; i < chars; i++) {
         file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
-            throw Exception("Cannot load font file, wrong file format");
+            throw runtime_error("Cannot load font file, wrong file format");
         }
         uint8_t size = *(reinterpret_cast<uint8_t *>(buffer));
         file.read(reinterpret_cast<char *>(buffer), size * sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
-            throw Exception("Cannot load font file, wrong file format");
+            throw runtime_error("Cannot load font file, wrong file format");
         }
         string code = string(reinterpret_cast<char *>(buffer), size * sizeof(uint8_t));
         file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
-            throw Exception("Cannot load font file, wrong file format");
+            throw runtime_error("Cannot load font file, wrong file format");
         }
         GLfloat width = *(reinterpret_cast<uint8_t *>(buffer)) / static_cast<GLfloat>(height);
         file.read(reinterpret_cast<char *>(buffer), 2 * sizeof(uint8_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
-            throw Exception("Cannot load font file, wrong file format");
+            throw runtime_error("Cannot load font file, wrong file format");
         }
         CharOffset offset = {
             (reinterpret_cast<int8_t *>(buffer))[0] / static_cast<GLfloat>(height),
@@ -1259,7 +1235,7 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
         file.read(reinterpret_cast<char *>(buffer), 4 * sizeof(uint16_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
-            throw Exception("Cannot load font file, wrong file format");
+            throw runtime_error("Cannot load font file, wrong file format");
         }
         TextureRect textureRect = {
             buffer[0] / static_cast<GLfloat>(texture.GetWidth()),
@@ -1275,20 +1251,20 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
         file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
         if (file.rdstate() & ifstream::eofbit) {
             file.close();
-            throw Exception("Cannot load font file, wrong file format");
+            throw runtime_error("Cannot load font file, wrong file format");
         }
         uint16_t advances = *buffer;
         for (uint16_t j = 0; j < advances; j++) {
             file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
             if (file.rdstate() & ifstream::eofbit) {
                 file.close();
-                throw Exception("Cannot load font file, wrong file format");
+                throw runtime_error("Cannot load font file, wrong file format");
             }
             uint16_t character = *buffer;
             file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
             if (file.rdstate() & ifstream::eofbit) {
                 file.close();
-                throw Exception("Cannot load font file, wrong file format");
+                throw runtime_error("Cannot load font file, wrong file format");
             }
             fontChar.AddAdvance({
                 character,
