@@ -2,6 +2,8 @@
 #include <cstring>
 #include <cmath>
 #include <memory>
+#include <thread>
+#include <chrono>
 #include "lodepng/lodepng.h"
 #ifndef _WIN32
 #include <iostream>
@@ -39,6 +41,8 @@ using std::runtime_error;
 using std::vector;
 using std::shared_ptr;
 using std::default_delete;
+using std::chrono::microseconds;
+using std::this_thread::sleep_for;
 #ifndef _MSC_VER
 using std::min;
 #endif
@@ -46,16 +50,6 @@ using std::min;
 #define NUMBER_OF_PARTICLES 16
 
 #ifdef _WIN32
-void usleep(uint32_t uSec)
-{
-    LARGE_INTEGER ft;
-    ft.QuadPart = -(10 * (int64_t)uSec);
-    HANDLE timer = CreateWaitableTimer(NULL, TRUE, NULL);
-    SetWaitableTimer(timer, &ft, 0, NULL, NULL, 0);
-    WaitForSingleObject(timer, INFINITE);
-    CloseHandle(timer);
-}
-
 PFNGLACTIVETEXTUREPROC glActiveTexture;
 PFNGLATTACHSHADERPROC glAttachShader;
 PFNGLBINDBUFFERPROC glBindBuffer;
@@ -1649,7 +1643,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     );
                     window->SwapBuffers();
                     background.Animate();
-                    usleep(10000);
+                    sleep_for(microseconds(10000));
                     break;
                 case WINDOW_EVENT_ESC_KEY_PRESSED:
                 case WINDOW_EVENT_WINDOW_CLOSED:
