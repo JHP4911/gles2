@@ -26,23 +26,6 @@
 #include "GL/wglext.h"
 #endif
 
-#ifndef _WIN32
-using std::cin;
-using std::cout;
-using std::endl;
-#else
-using std::queue;
-#endif
-using std::ios;
-using std::ifstream;
-using std::string;
-using std::exception;
-using std::runtime_error;
-using std::vector;
-using std::shared_ptr;
-using std::default_delete;
-using std::chrono::microseconds;
-using std::this_thread::sleep_for;
 #ifndef _MSC_VER
 using std::min;
 #endif
@@ -122,7 +105,7 @@ class Window
         HANDLE eventLoopThread;
         HGLRC hRC;
         HDC hDC;
-        static queue<WindowEvent> events;
+        static std::queue<WindowEvent> events;
 #endif
         uint32_t clientWidth, clientHeight;
 
@@ -130,7 +113,7 @@ class Window
 
 #ifdef _WIN32
         template <class T>
-        T InitGLFunction(string glFuncName);
+        T InitGLFunction(std::string glFuncName);
         void InitGL();
         static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 #endif
@@ -138,7 +121,7 @@ class Window
 
 #ifdef _WIN32
 int32_t Window::exitCode = 0;
-queue<WindowEvent> Window::events;
+std::queue<WindowEvent> Window::events;
 #endif
 
 Window::Window()
@@ -147,7 +130,7 @@ Window::Window()
     bcm_host_init();
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        throw runtime_error("Cannot create SDL window");
+        throw std::runtime_error("Cannot create SDL window");
     }
 
     SDL_WM_SetCaption("SDL Window", "SDL Icon");
@@ -155,18 +138,18 @@ Window::Window()
     SDL_Surface *sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
     if (sdlScreen == nullptr) {
         SDL_Quit();
-        throw runtime_error("Cannot create SDL window");
+        throw std::runtime_error("Cannot create SDL window");
     }
 
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (eglDisplay == EGL_NO_DISPLAY) {
         SDL_Quit();
-        throw runtime_error("Cannot obtain EGL display connection");
+        throw std::runtime_error("Cannot obtain EGL display connection");
     }
 
     if (eglInitialize(eglDisplay, nullptr, nullptr) != EGL_TRUE) {
         SDL_Quit();
-        throw runtime_error("Cannot initialize EGL display connection");
+        throw std::runtime_error("Cannot initialize EGL display connection");
     }
 
     static const EGLint attribList[] =
@@ -185,13 +168,13 @@ Window::Window()
     if (eglChooseConfig(eglDisplay, attribList, &config, 1, &numConfig) != EGL_TRUE) {
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw runtime_error("Cannot obtain EGL frame buffer configuration");
+        throw std::runtime_error("Cannot obtain EGL frame buffer configuration");
     }
 
     if (eglBindAPI(EGL_OPENGL_ES_API) != EGL_TRUE) {
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw runtime_error("Cannot set rendering API");
+        throw std::runtime_error("Cannot set rendering API");
 	}
 
     static const EGLint contextAttrib[] =
@@ -204,14 +187,14 @@ Window::Window()
     if (eglContext == EGL_NO_CONTEXT) {
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw runtime_error("Cannot create EGL rendering context");
+        throw std::runtime_error("Cannot create EGL rendering context");
     }
 
     if (graphics_get_display_size(0, &clientWidth, &clientHeight) < 0) {
         eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw runtime_error("Cannot obtain screen resolution");
+        throw std::runtime_error("Cannot obtain screen resolution");
     }
 
     VC_RECT_T dstRect, srcRect;
@@ -241,7 +224,7 @@ Window::Window()
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw runtime_error("Cannot open secondary framebuffer");
+        throw std::runtime_error("Cannot open secondary framebuffer");
     }
     if (ioctl(fbFd, FBIOGET_FSCREENINFO, &fInfo) ||
         ioctl(fbFd, FBIOGET_VSCREENINFO, &vInfo)) {
@@ -250,7 +233,7 @@ Window::Window()
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw runtime_error("Cannot access secondary framebuffer information");
+        throw std::runtime_error("Cannot access secondary framebuffer information");
     }
 
     dispmanResource = vc_dispmanx_resource_create(VC_IMAGE_RGB565, vInfo.xres, vInfo.yres, &image);
@@ -260,7 +243,7 @@ Window::Window()
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw runtime_error("Cannot initialize secondary display");
+        throw std::runtime_error("Cannot initialize secondary display");
     }
 
     fbMemSize = fInfo.smem_len;
@@ -274,7 +257,7 @@ Window::Window()
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw runtime_error("Cannot initialize secondary framebuffer memory mapping");
+        throw std::runtime_error("Cannot initialize secondary framebuffer memory mapping");
     }
 
     vc_dispmanx_rect_set(&dispmanRect, 0, 0, vInfo.xres, vInfo.yres);
@@ -303,7 +286,7 @@ Window::Window()
         vc_dispmanx_display_close(dispmanDisplay);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw runtime_error("Cannot create new EGL window surface");
+        throw std::runtime_error("Cannot create new EGL window surface");
     }
 #else
 #ifndef FORCE_FULLSCREEN
@@ -330,7 +313,7 @@ Window::Window()
     wcex.hIconSm = LoadIcon(NULL, IDI_APPLICATION);;
 
     if (!RegisterClassEx(&wcex)) {
-        throw runtime_error("Cannot create OpenGL window");
+        throw std::runtime_error("Cannot create OpenGL window");
     }
 
     DWORD exStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
@@ -343,7 +326,7 @@ Window::Window()
 
     if(!AdjustWindowRectEx(&clientArea, style, false, exStyle)) {
         UnregisterClass("OpenGLWindow", hInstance);
-        throw runtime_error("Cannot create OpenGL window");
+        throw std::runtime_error("Cannot create OpenGL window");
     }
 
     hWnd = CreateWindowEx(exStyle, "OpenGLWindow", "OpenGL Window", style, CW_USEDEFAULT, CW_USEDEFAULT,
@@ -356,7 +339,7 @@ Window::Window()
 
     if (hWnd == NULL) {
         UnregisterClass("OpenGLWindow", hInstance);
-        throw runtime_error("Cannot create OpenGL window");
+        throw std::runtime_error("Cannot create OpenGL window");
     }
 
     ShowWindow(hWnd, SW_SHOW);
@@ -365,7 +348,7 @@ Window::Window()
     if (hDC == NULL) {
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw runtime_error("Cannot obtain device context handle");
+        throw std::runtime_error("Cannot obtain device context handle");
     }
 
     PIXELFORMATDESCRIPTOR pfd;
@@ -383,14 +366,14 @@ Window::Window()
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw runtime_error("Cannot obtain correct pixel format configuration");
+        throw std::runtime_error("Cannot obtain correct pixel format configuration");
     }
 
     if (!SetPixelFormat(hDC, pixelFormat, &pfd)) {
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw runtime_error("Cannot set correct pixel format configuration");
+        throw std::runtime_error("Cannot set correct pixel format configuration");
     }
 
     hRC = wglCreateContext(hDC);
@@ -398,7 +381,7 @@ Window::Window()
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw runtime_error("Cannot create OpenGL rendering context");
+        throw std::runtime_error("Cannot create OpenGL rendering context");
     }
 #endif
 
@@ -427,7 +410,7 @@ Window::Window()
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw runtime_error("Cannot attach OpenGL rendering context to thread");
+        throw std::runtime_error("Cannot attach OpenGL rendering context to thread");
     }
 
     GLint attribs[] = {
@@ -439,7 +422,7 @@ Window::Window()
 
     try {
         InitGL();
-    } catch (runtime_error e) {
+    } catch (std::runtime_error e) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(hRC);
         ReleaseDC(hWnd, hDC);
@@ -455,7 +438,7 @@ Window::Window()
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw runtime_error("Cannot create OpenGL rendering context");
+        throw std::runtime_error("Cannot create OpenGL rendering context");
     }
 
     wglDeleteContext(hRC);
@@ -466,7 +449,7 @@ Window::Window()
         ReleaseDC(hWnd, hDC);
         DestroyWindow(hWnd);
         UnregisterClass("OpenGLWindow", hInstance);
-        throw runtime_error("Cannot attach OpenGL rendering context to thread");
+        throw std::runtime_error("Cannot attach OpenGL rendering context to thread");
     }
 
     hRC = hRC2;
@@ -559,11 +542,11 @@ WindowEvent Window::PollEvent()
 
 #ifdef _WIN32
 template <class T>
-T Window::InitGLFunction(string glFuncName)
+T Window::InitGLFunction(std::string glFuncName)
 {
     T func = reinterpret_cast<T>(wglGetProcAddress(glFuncName.c_str()));
     if (func == nullptr) {
-        throw runtime_error(string("Cannot initialize ") + glFuncName + string(" function"));
+        throw std::runtime_error(std::string("Cannot initialize ") + glFuncName + std::string(" function"));
     }
     return func;
 }
@@ -652,18 +635,18 @@ ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentSh
 
     vertexShader = LoadShader(vertexShaderSrc, srcType, GL_VERTEX_SHADER);
     if (vertexShader == 0) {
-        throw runtime_error("Cannot load vertex shader");
+        throw std::runtime_error("Cannot load vertex shader");
     }
     fragmentShader = LoadShader(fragmentShaderSrc, srcType, GL_FRAGMENT_SHADER);
     if (fragmentShader == 0) {
         glDeleteShader(vertexShader);
-        throw runtime_error("Cannot load fragment shader");
+        throw std::runtime_error("Cannot load fragment shader");
     }
     program = glCreateProgram();
     if (program == 0) {
         glDeleteShader(fragmentShader);
         glDeleteShader(vertexShader);
-        throw runtime_error("Cannot create shader program");
+        throw std::runtime_error("Cannot create shader program");
     }
     glAttachShader(program, vertexShader);
     glAttachShader(program, fragmentShader);
@@ -676,7 +659,7 @@ ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentSh
             char *infoLog = new char[infoLen];
             glGetProgramInfoLog(program, infoLen, nullptr, infoLog);
 #ifndef _WIN32
-            cout << "Shader linker error:" << endl << infoLog << endl;
+            std::cout << "Shader linker error:" << std::endl << infoLog << std::endl;
 #else
 #ifndef FORCE_FULLSCREEN
             MessageBox(NULL, infoLog, "Shader linker error", MB_ICONEXCLAMATION);
@@ -687,7 +670,7 @@ ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentSh
         glDeleteProgram(program);
         glDeleteShader(fragmentShader);
         glDeleteShader(vertexShader);
-        throw runtime_error("Error while linking shader");
+        throw std::runtime_error("Error while linking shader");
     }
 }
 
@@ -709,16 +692,16 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, ShaderSource srcType, GL
     GLint isCompiled, length;
     GLchar *code;
 
-    ifstream file;
+    std::ifstream file;
     switch (srcType) {
         case GL_SHADER_CODE_FROM_FILE:
-            file.open(shaderSrc, ifstream::binary);
+            file.open(shaderSrc, std::ifstream::binary);
             if (!file.is_open()) {
                 return 0;
             }
-            file.seekg(0, ios::end);
+            file.seekg(0, std::ios::end);
             length = static_cast<GLint>(file.tellg());
-            file.seekg(0, ios::beg);
+            file.seekg(0, std::ios::beg);
             code = new GLchar[length];
             file.read(code, length);
             file.close();
@@ -744,7 +727,7 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, ShaderSource srcType, GL
             char *infoLog = new char[infoLen];
             glGetShaderInfoLog(shader, infoLen, nullptr, infoLog);
 #ifndef _WIN32
-            cout << "Shader compilation error:" << endl << infoLog << endl;
+            std::cout << "Shader compilation error:" << std::endl << infoLog << std::endl;
 #else
 #ifndef FORCE_FULLSCREEN
             MessageBox(NULL, infoLog, "Shader compilation error", MB_ICONEXCLAMATION);
@@ -778,10 +761,10 @@ class Texture
 
 Texture::Texture(const char *textureSrc)
 {
-    vector<uint8_t> data;
+    std::vector<uint8_t> data;
     GLuint error = lodepng::decode(data, width, height, textureSrc);
     if (error) {
-        throw runtime_error("Cannot load texture");
+        throw std::runtime_error("Cannot load texture");
     }
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
@@ -831,7 +814,7 @@ class Matrix
         Matrix(GLuint width, GLuint height);
         Matrix(GLuint width, GLuint height, GLfloat *matrixData);
 
-        shared_ptr<GLfloat> &GetData();
+        std::shared_ptr<GLfloat> &GetData();
 
         void GetSize(GLuint &width, GLuint &height);
         void SetSize(GLuint width, GLuint height);
@@ -847,7 +830,7 @@ class Matrix
         static Matrix GenerateScale(GLfloat x, GLfloat y, GLfloat z);
         static Matrix GenerateRotation(GLfloat angle, RotationType type);
     private:
-        shared_ptr<GLfloat> data;
+        std::shared_ptr<GLfloat> data;
         GLuint width;
         GLuint height;
 };
@@ -855,14 +838,14 @@ class Matrix
 Matrix::Matrix() :
     width(4), height(4)
 {
-    data = shared_ptr<GLfloat>(new GLfloat[4 * 4], default_delete<GLfloat[]>());
+    data = std::shared_ptr<GLfloat>(new GLfloat[4 * 4], std::default_delete<GLfloat[]>());
     std::memset(data.get(), 0, sizeof(GLfloat) * 4 * 4);
 }
 
 Matrix::Matrix(const Matrix &source) :
     width(source.width), height(source.height)
 {
-    data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
+    data = std::shared_ptr<GLfloat>(new GLfloat[width * height], std::default_delete<GLfloat[]>());
     std::memcpy(data.get(), source.data.get(), sizeof(GLfloat) * width * height);
 }
 
@@ -870,9 +853,9 @@ Matrix::Matrix(GLuint width, GLuint height) :
     width(width), height(height)
 {
     if ((width < 1) || (height < 1)) {
-        throw runtime_error("Cannot create matrix - dimensions must be greater than 0");
+        throw std::runtime_error("Cannot create matrix - dimensions must be greater than 0");
     }
-    data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
+    data = std::shared_ptr<GLfloat>(new GLfloat[width * height], std::default_delete<GLfloat[]>());
     std::memset(data.get(), 0, sizeof(GLfloat) * width * height);
 }
 
@@ -880,9 +863,9 @@ Matrix::Matrix(GLuint width, GLuint height, GLfloat *matrixData) :
     width(width), height(height)
 {
     if ((width < 1) || (height < 1)) {
-        throw runtime_error("Cannot create matrix - dimensions must be greater than 0");
+        throw std::runtime_error("Cannot create matrix - dimensions must be greater than 0");
     }
-    data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
+    data = std::shared_ptr<GLfloat>(new GLfloat[width * height], std::default_delete<GLfloat[]>());
     std::memcpy(data.get(), matrixData, sizeof(GLfloat) * width * height);
 }
 
@@ -964,7 +947,7 @@ Matrix Matrix::GenerateRotation(GLfloat angle, RotationType type)
     return result;
 }
 
-shared_ptr<GLfloat> &Matrix::GetData()
+std::shared_ptr<GLfloat> &Matrix::GetData()
 {
     return data;
 }
@@ -972,7 +955,7 @@ shared_ptr<GLfloat> &Matrix::GetData()
 Matrix Matrix::operator+(const Matrix &matrix)
 {
     if ((width != matrix.width) || (height != matrix.height)) {
-        throw runtime_error("Cannot add matrices - incompatible matrix dimensions");
+        throw std::runtime_error("Cannot add matrices - incompatible matrix dimensions");
     }
     Matrix result(width, height);
     for (GLuint i = 0; i < width * height; i++) {
@@ -984,7 +967,7 @@ Matrix Matrix::operator+(const Matrix &matrix)
 Matrix Matrix::operator-(const Matrix &matrix)
 {
     if ((width != matrix.width) || (height != matrix.height)) {
-        throw runtime_error("Cannot subtract matrices - incompatible matrix dimensions");
+        throw std::runtime_error("Cannot subtract matrices - incompatible matrix dimensions");
     }
     Matrix result(width, height);
     for (GLuint i = 0; i < width * height; i++) {
@@ -996,7 +979,7 @@ Matrix Matrix::operator-(const Matrix &matrix)
 Matrix Matrix::operator*(const Matrix &matrix)
 {
     if (width != matrix.height) {
-        throw runtime_error("Cannot multiply matrices - incompatible matrix dimensions");
+        throw std::runtime_error("Cannot multiply matrices - incompatible matrix dimensions");
     }
     Matrix result(matrix.width, height);
     for (GLuint j = 0; j < result.height; j++) {
@@ -1016,7 +999,7 @@ Matrix &Matrix::operator=(const Matrix &source)
     if ((width != source.width) || (height != source.height)) {
         width = source.width;
         height = source.height;
-        data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
+        data = std::shared_ptr<GLfloat>(new GLfloat[width * height], std::default_delete<GLfloat[]>());
     }
     std::memcpy(data.get(), source.data.get(), sizeof(GLfloat) * width * height);
     return *this;
@@ -1037,13 +1020,13 @@ void Matrix::GetSize(GLuint &width, GLuint &height)
 void Matrix::SetSize(GLuint width, GLuint height)
 {
     if ((width < 1) || (height < 1)) {
-        throw runtime_error("Cannot resize matrix - dimensions must be greater than 0");
+        throw std::runtime_error("Cannot resize matrix - dimensions must be greater than 0");
     }
     if ((this->width == width) && (this->height == height)) {
         return;
     }
-    shared_ptr<GLfloat> oldData = data;
-    data = shared_ptr<GLfloat>(new GLfloat[width * height], default_delete<GLfloat[]>());
+    std::shared_ptr<GLfloat> oldData = data;
+    data = std::shared_ptr<GLfloat>(new GLfloat[width * height], std::default_delete<GLfloat[]>());
     std::memset(data.get(), 0, sizeof(GLfloat) * width * height);
     for (GLuint i = 0; i < min(this->width, width); i++) {
         std::memcpy(&data.get()[i * height], &oldData.get()[i * this->height], sizeof(GLfloat) * min(this->height, height));
@@ -1076,9 +1059,9 @@ struct TextureRect
 class FontChar
 {
     public:
-        FontChar(string code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size);
+        FontChar(std::string code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size);
 
-        string GetCode();
+        std::string GetCode();
         GLfloat GetWidth();
         CharOffset GetOffset();
         TextureRect GetRect();
@@ -1086,20 +1069,20 @@ class FontChar
         void AddAdvance(CharAdvance advance);
         GLfloat GetAdvance(uint16_t character);
     private:
-        string code;
+        std::string code;
         GLfloat width;
         CharOffset offset;
         TextureRect textureRect;
         CharSize size;
-        vector<CharAdvance> advances;
+        std::vector<CharAdvance> advances;
 };
 
-FontChar::FontChar(string code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size) :
+FontChar::FontChar(std::string code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size) :
     code(code), width(width), offset(offset), textureRect(rect), size(size)
 {
 }
 
-string FontChar::GetCode()
+std::string FontChar::GetCode()
 {
     return code;
 }
@@ -1149,88 +1132,82 @@ class Font
         Font &operator=(const Font &source) = delete;
         virtual ~Font();
 
-        void RenderText(string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType);
+        void RenderText(std::string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType);
     private:
-        string name;
+        std::string name;
         Texture *texture;
         ShaderProgram *shader;
         GLuint vertexBuffer, textureBuffer, positionAttribute, textureAttribute, positionUniform, textureUniform, opacityUniform;
-        vector<FontChar> font;
+        std::vector<FontChar> font;
 
         void AddCharacter(FontChar fontChar);
-        FontChar GetCharacter(string text, uint32_t offset, uint16_t &index);
+        FontChar GetCharacter(std::string text, uint32_t offset, uint16_t &index);
 };
 
 Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
     texture(&texture), shader(&shader)
 {
-    ifstream file;
+    std::ifstream file;
     uint16_t buffer[256];
-    file.open(fontSrc, ifstream::binary);
+    file.open(fontSrc, std::ifstream::binary);
     if (!file.is_open()) {
-        throw runtime_error("Cannot open font file");
+        throw std::runtime_error("Cannot open font file");
     }
-    file.read(reinterpret_cast<char *>(buffer), 4);
-    if ((file.rdstate() & ifstream::eofbit) || string(reinterpret_cast<char *>(buffer), 4) != "FONT") {
+    auto throwWrongFormat = [&]() {
         file.close();
-        throw runtime_error("Cannot load font file, wrong file format");
+        throw std::runtime_error("Cannot load font file, wrong file format");
+    };
+    file.read(reinterpret_cast<char *>(buffer), 4);
+    if ((file.rdstate() & std::ifstream::eofbit) || std::string(reinterpret_cast<char *>(buffer), 4) != "FONT") {
+        throwWrongFormat();
     }
     file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
-    if (file.rdstate() & ifstream::eofbit) {
-        file.close();
-        throw runtime_error("Cannot load font file, wrong file format");
+    if (file.rdstate() & std::ifstream::eofbit) {
+        throwWrongFormat();
     }
     uint8_t length = *(reinterpret_cast<uint8_t *>(buffer));
     file.read(reinterpret_cast<char *>(buffer), length * sizeof(uint8_t));
-    if (file.rdstate() & ifstream::eofbit) {
-        file.close();
-        throw runtime_error("Cannot load font file, wrong file format");
+    if (file.rdstate() & std::ifstream::eofbit) {
+        throwWrongFormat();
     }
-    name = string(reinterpret_cast<char *>(buffer), length * sizeof(uint8_t));
+    name = std::string(reinterpret_cast<char *>(buffer), length * sizeof(uint8_t));
     file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
-    if (file.rdstate() & ifstream::eofbit) {
-        file.close();
-        throw runtime_error("Cannot load font file, wrong file format");
+    if (file.rdstate() & std::ifstream::eofbit) {
+        throwWrongFormat();
     }
     uint8_t height = *(reinterpret_cast<uint8_t *>(buffer));
     file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
-    if (file.rdstate() & ifstream::eofbit) {
-        file.close();
-        throw runtime_error("Cannot load font file, wrong file format");
+    if (file.rdstate() & std::ifstream::eofbit) {
+        throwWrongFormat();
     }
     uint16_t chars = *buffer;
     for (uint16_t i = 0; i < chars; i++) {
         file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
-        if (file.rdstate() & ifstream::eofbit) {
-            file.close();
-            throw runtime_error("Cannot load font file, wrong file format");
+        if (file.rdstate() & std::ifstream::eofbit) {
+            throwWrongFormat();
         }
         uint8_t size = *(reinterpret_cast<uint8_t *>(buffer));
         file.read(reinterpret_cast<char *>(buffer), size * sizeof(uint8_t));
-        if (file.rdstate() & ifstream::eofbit) {
-            file.close();
-            throw runtime_error("Cannot load font file, wrong file format");
+        if (file.rdstate() & std::ifstream::eofbit) {
+            throwWrongFormat();
         }
-        string code = string(reinterpret_cast<char *>(buffer), size * sizeof(uint8_t));
+        std::string code = std::string(reinterpret_cast<char *>(buffer), size * sizeof(uint8_t));
         file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
-        if (file.rdstate() & ifstream::eofbit) {
-            file.close();
-            throw runtime_error("Cannot load font file, wrong file format");
+        if (file.rdstate() & std::ifstream::eofbit) {
+            throwWrongFormat();
         }
         GLfloat width = *(reinterpret_cast<uint8_t *>(buffer)) / static_cast<GLfloat>(height);
         file.read(reinterpret_cast<char *>(buffer), 2 * sizeof(uint8_t));
-        if (file.rdstate() & ifstream::eofbit) {
-            file.close();
-            throw runtime_error("Cannot load font file, wrong file format");
+        if (file.rdstate() & std::ifstream::eofbit) {
+            throwWrongFormat();
         }
         CharOffset offset = {
             (reinterpret_cast<int8_t *>(buffer))[0] / static_cast<GLfloat>(height),
             (reinterpret_cast<int8_t *>(buffer))[1] / static_cast<GLfloat>(height)
         };
         file.read(reinterpret_cast<char *>(buffer), 4 * sizeof(uint16_t));
-        if (file.rdstate() & ifstream::eofbit) {
-            file.close();
-            throw runtime_error("Cannot load font file, wrong file format");
+        if (file.rdstate() & std::ifstream::eofbit) {
+            throwWrongFormat();
         }
         TextureRect textureRect = {
             buffer[0] / static_cast<GLfloat>(texture.GetWidth()),
@@ -1244,22 +1221,19 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
         };
         FontChar fontChar(code, width, offset, textureRect, dimensions);
         file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
-        if (file.rdstate() & ifstream::eofbit) {
-            file.close();
-            throw runtime_error("Cannot load font file, wrong file format");
+        if (file.rdstate() & std::ifstream::eofbit) {
+            throwWrongFormat();
         }
         uint16_t advances = *buffer;
         for (uint16_t j = 0; j < advances; j++) {
             file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
-            if (file.rdstate() & ifstream::eofbit) {
-                file.close();
-                throw runtime_error("Cannot load font file, wrong file format");
+            if (file.rdstate() & std::ifstream::eofbit) {
+                throwWrongFormat();
             }
             uint16_t character = *buffer;
             file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
-            if (file.rdstate() & ifstream::eofbit) {
-                file.close();
-                throw runtime_error("Cannot load font file, wrong file format");
+            if (file.rdstate() & std::ifstream::eofbit) {
+                throwWrongFormat();
             }
             fontChar.AddAdvance({
                 character,
@@ -1297,15 +1271,15 @@ void Font::AddCharacter(FontChar fontChar)
             end = check;
         }
     }
-    vector<FontChar>::iterator position = font.begin() + begin;
+    auto position = font.begin() + begin;
     font.insert(position, fontChar);
 }
 
-FontChar Font::GetCharacter(string text, uint32_t offset, uint16_t &index) {
+FontChar Font::GetCharacter(std::string text, uint32_t offset, uint16_t &index) {
     uint16_t begin = 0, end = static_cast<uint16_t>(font.size());
     while (begin != end) {
         uint16_t check = (begin + end) >> 1;
-        string code = font[check].GetCode();
+        std::string code = font[check].GetCode();
         if (code < text.substr(offset, code.size())) {
             begin = check + 1;
         }
@@ -1320,12 +1294,12 @@ FontChar Font::GetCharacter(string text, uint32_t offset, uint16_t &index) {
     return font[begin];
 }
 
-void Font::RenderText(string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType)
+void Font::RenderText(std::string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType)
 {
     GLfloat offsetLeft = 0.0f, offsetTop = 0.0f, renderWidth = 0.0f, renderHeight = 0.0f;
     uint32_t primitives = 0;
     uint16_t lastCharIndex = 0xFFFF;
-    vector<GLfloat> vertexData, textureData;
+    std::vector<GLfloat> vertexData, textureData;
     for (uint32_t i = 0; i < text.length(); i++) {
         if (text[i] == '\n') {
             offsetLeft = 0.0f;
@@ -1443,7 +1417,7 @@ class Background
         ShaderProgram *backgroundShader, *particleShader;
         GLuint vertexBuffer, textureBuffer, backgroundVertexAttribute, backgroundTextureAttribute, backgroundTextureUniform, particleVertexAttribute;
         GLuint particleTextureAttribute, particlePositionUniform, particleTextureUniform, particleOpacityUniform;
-        vector<Particle> particles;
+        std::vector<Particle> particles;
         GLfloat screenRatio;
 
         void ResetParticle(Particle &particle, bool initial);
@@ -1643,7 +1617,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     );
                     window->SwapBuffers();
                     background.Animate();
-                    sleep_for(microseconds(10000));
+                    std::this_thread::sleep_for(std::chrono::microseconds(10000));
                     break;
                 case WINDOW_EVENT_ESC_KEY_PRESSED:
                 case WINDOW_EVENT_WINDOW_CLOSED:
@@ -1654,9 +1628,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     break;
             }
         }
-    } catch (exception &e) {
+    } catch (std::exception &e) {
         #ifndef _WIN32
-            cout << e.what() << endl;
+            std::cout << e.what() << std::endl;
         #else
             MessageBox(NULL, e.what(), "Exception", MB_OK | MB_ICONERROR);
         #endif
