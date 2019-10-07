@@ -76,8 +76,9 @@ class Window
         static int32_t exitCode;
 #endif
 
-        Window(const Window &source) = delete;
-        Window &operator=(const Window &source) = delete;
+        Window(const Window &) = delete;
+        Window(Window &&) = delete;
+        Window &operator=(const Window &) = delete;
         virtual ~Window();
         static Window &Initialize();
         void Close();
@@ -220,8 +221,8 @@ Window::Window()
 
     fbFd = open("/dev/fb1", O_RDWR);
     if (fbFd < 0) {
-        eglDestroyContext(eglDisplay, eglContext);
         vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
         SDL_Quit();
         throw std::runtime_error("Cannot open secondary framebuffer");
@@ -229,8 +230,8 @@ Window::Window()
     if (ioctl(fbFd, FBIOGET_FSCREENINFO, &fInfo) ||
         ioctl(fbFd, FBIOGET_VSCREENINFO, &vInfo)) {
         close(fbFd);
-        eglDestroyContext(eglDisplay, eglContext);
         vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
         SDL_Quit();
         throw std::runtime_error("Cannot access secondary framebuffer information");
@@ -239,8 +240,8 @@ Window::Window()
     dispmanResource = vc_dispmanx_resource_create(VC_IMAGE_RGB565, vInfo.xres, vInfo.yres, &image);
     if (!dispmanResource) {
         close(fbFd);
-        eglDestroyContext(eglDisplay, eglContext);
         vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
         SDL_Quit();
         throw std::runtime_error("Cannot initialize secondary display");
@@ -253,8 +254,8 @@ Window::Window()
     if (framebuffer == MAP_FAILED) {
         vc_dispmanx_resource_delete(dispmanResource);
         close(fbFd);
-        eglDestroyContext(eglDisplay, eglContext);
         vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
         SDL_Quit();
         throw std::runtime_error("Cannot initialize secondary framebuffer memory mapping");
@@ -274,16 +275,16 @@ Window::Window()
 
     eglSurface = eglCreateWindowSurface(eglDisplay, config, &nativeWindow, nullptr);
     if (eglSurface == EGL_NO_SURFACE) {
+        dispmanUpdate = vc_dispmanx_update_start(0);
+        vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
+        vc_dispmanx_update_submit_sync(dispmanUpdate);
 #ifdef TFT_OUTPUT
         munmap(framebuffer, fbMemSize);
         vc_dispmanx_resource_delete(dispmanResource);
         close(fbFd);
 #endif
-        eglDestroyContext(eglDisplay, eglContext);
-        dispmanUpdate = vc_dispmanx_update_start(0);
-        vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
-        vc_dispmanx_update_submit_sync(dispmanUpdate);
         vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
         SDL_Quit();
         throw std::runtime_error("Cannot create new EGL window surface");
@@ -388,19 +389,19 @@ Window::Window()
 #ifndef _WIN32
     if (eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext) != EGL_TRUE) {
         eglDestroySurface(eglDisplay, eglSurface);
+        dispmanUpdate = vc_dispmanx_update_start(0);
+        vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
+        vc_dispmanx_update_submit_sync(dispmanUpdate);
 #ifdef TFT_OUTPUT
         munmap(framebuffer, fbMemSize);
         vc_dispmanx_resource_delete(dispmanResource);
         close(fbFd);
 #endif
-        eglDestroyContext(eglDisplay, eglContext);
-        dispmanUpdate = vc_dispmanx_update_start(0);
-        vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
-        vc_dispmanx_update_submit_sync(dispmanUpdate);
         vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
         eglTerminate(eglDisplay);
         SDL_Quit();
-        throw runtime_error("Cannot attach EGL rendering context to EGL surface");
+        throw std::runtime_error("Cannot attach EGL rendering context to EGL surface");
     }
 
     quit = false;
@@ -461,16 +462,16 @@ Window::~Window()
 #ifndef _WIN32
     eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     eglDestroySurface(eglDisplay, eglSurface);
+    DISPMANX_UPDATE_HANDLE_T dispmanUpdate = vc_dispmanx_update_start(0);
+    vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
+    vc_dispmanx_update_submit_sync(dispmanUpdate);
 #ifdef TFT_OUTPUT
     munmap(framebuffer, fbMemSize);
     vc_dispmanx_resource_delete(dispmanResource);
     close(fbFd);
 #endif
-    eglDestroyContext(eglDisplay, eglContext);
-    DISPMANX_UPDATE_HANDLE_T dispmanUpdate = vc_dispmanx_update_start(0);
-    vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
-    vc_dispmanx_update_submit_sync(dispmanUpdate);
     vc_dispmanx_display_close(dispmanDisplay);
+    eglDestroyContext(eglDisplay, eglContext);
     eglTerminate(eglDisplay);
     SDL_Quit();
 #else
@@ -616,8 +617,9 @@ class ShaderProgram
 {
     public:
         ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, ShaderSource srcType);
-        ShaderProgram(const ShaderProgram &source) = delete;
-        ShaderProgram &operator=(const ShaderProgram &source) = delete;
+        ShaderProgram(const ShaderProgram &) = delete;
+        ShaderProgram(ShaderProgram &&) = delete;
+        ShaderProgram &operator=(const ShaderProgram &) = delete;
         virtual ~ShaderProgram();
 
         GLuint GetProgram();
@@ -746,8 +748,9 @@ class Texture
     public:
         Texture(const char *textureSrc);
         Texture(GLuint width, GLuint height, GLchar *data);
-        Texture(const Texture &source) = delete;
-        Texture &operator=(const Texture &source) = delete;
+        Texture(const Texture &) = delete;
+        Texture(Texture &&) = delete;
+        Texture &operator=(const Texture &) = delete;
         virtual ~Texture();
 
         GLuint GetTexture();
@@ -811,6 +814,7 @@ class Matrix
     public:
         Matrix();
         Matrix(const Matrix &source);
+        Matrix(Matrix &&source);
         Matrix(GLuint width, GLuint height);
         Matrix(GLuint width, GLuint height, GLfloat *matrixData);
 
@@ -847,6 +851,15 @@ Matrix::Matrix(const Matrix &source) :
 {
     data = std::shared_ptr<GLfloat>(new GLfloat[width * height], std::default_delete<GLfloat[]>());
     std::memcpy(data.get(), source.data.get(), sizeof(GLfloat) * width * height);
+}
+
+Matrix::Matrix(Matrix &&source) :
+    data(source.data), width(source.width), height(source.height)
+{
+    source.width = 4;
+    source.height = 4;
+    source.data = std::shared_ptr<GLfloat>(new GLfloat[4 * 4], std::default_delete<GLfloat[]>());
+    std::memset(source.data.get(), 0, sizeof(GLfloat) * 4 * 4);
 }
 
 Matrix::Matrix(GLuint width, GLuint height) :
@@ -1128,8 +1141,9 @@ class Font
 {
     public:
         Font(const char *fontSrc, Texture &texture, ShaderProgram &shader);
-        Font(const Font &source) = delete;
-        Font &operator=(const Font &source) = delete;
+        Font(const Font &) = delete;
+        Font(Font &&) = delete;
+        Font &operator=(const Font &) = delete;
         virtual ~Font();
 
         void RenderText(std::string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType);
@@ -1406,8 +1420,9 @@ class Background
 {
     public:
         Background(Texture &backgroundTexture, ShaderProgram &backgroundShader, Texture &particleTexture, ShaderProgram &particleShader, GLfloat screenRatio);
-        Background(const Background &source) = delete;
-        Background &operator=(const Background &source) = delete;
+        Background(const Background &) = delete;
+        Background(Background &&) = delete;
+        Background &operator=(const Background &) = delete;
         virtual ~Background();
 
         void Render();
