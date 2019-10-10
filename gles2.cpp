@@ -36,22 +36,26 @@ using std::min;
 class ScopeGuard {
     public:
         ScopeGuard() = default;
-        ScopeGuard(std::function<void()> &&func);
-        ScopeGuard &operator+=(std::function<void()> &&func);
+        template <class T>
+        ScopeGuard(T &&func);
+        template <class T>
+        ScopeGuard &operator+=(T &&func);
         virtual ~ScopeGuard();
     private:
         std::deque<std::function<void()>> handlers;
 };
 
-ScopeGuard::ScopeGuard(std::function<void()> &&func)
+template <class T>
+ScopeGuard::ScopeGuard(T &&func)
 {
-    this->operator+=(std::forward<std::function<void()>>(func));
+    this->operator+=<T>(std::forward<T>(func));
 }
 
-ScopeGuard &ScopeGuard::operator+=(std::function<void()> &&func)
+template <class T>
+ScopeGuard &ScopeGuard::operator+=(T &&func)
 {
     try {
-        handlers.emplace_front(std::forward<std::function<void()>>(func));
+        handlers.emplace_front(std::forward<T>(func));
         return *this;
     } catch(...) {
         func();
@@ -174,7 +178,7 @@ Window::Window()
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         throw std::runtime_error("Cannot create SDL window");
     }
-    ScopeGuard guard([&](){
+    ScopeGuard rollback([&](){
         SDL_Quit();
     });
 
@@ -193,7 +197,7 @@ Window::Window()
     if (eglInitialize(eglDisplay, nullptr, nullptr) != EGL_TRUE) {
         throw std::runtime_error("Cannot initialize EGL display connection");
     }
-    guard += [&](){
+    rollback += [&](){
         eglTerminate(eglDisplay);
     };
 
@@ -228,7 +232,7 @@ Window::Window()
     if (eglContext == EGL_NO_CONTEXT) {
         throw std::runtime_error("Cannot create EGL rendering context");
     }
-    guard += [&](){
+    rollback += [&](){
         eglDestroyContext(eglDisplay, eglContext);
     };
 
@@ -250,7 +254,7 @@ Window::Window()
 
     dispmanDisplay = vc_dispmanx_display_open(0);
     DISPMANX_UPDATE_HANDLE_T dispmanUpdate = vc_dispmanx_update_start(0);
-    guard += [&](){
+    rollback += [&](){
         vc_dispmanx_display_close(dispmanDisplay)
     };
 
@@ -264,7 +268,7 @@ Window::Window()
     if (fbFd < 0) {
         throw std::runtime_error("Cannot open secondary framebuffer");
     }
-    guard += [&](){
+    rollback += [&](){
         close(fbFd);
     };
     if (ioctl(fbFd, FBIOGET_FSCREENINFO, &fInfo) ||
@@ -276,7 +280,7 @@ Window::Window()
     if (!dispmanResource) {
         throw std::runtime_error("Cannot initialize secondary display");
     }
-    guard += [&](){
+    rollback += [&](){
         vc_dispmanx_resource_delete(dispmanResource);
     };
 
@@ -287,7 +291,7 @@ Window::Window()
     if (framebuffer == MAP_FAILED) {
         throw std::runtime_error("Cannot initialize secondary framebuffer memory mapping");
     }
-    guard += [&](){
+    rollback += [&](){
         munmap(framebuffer, fbMemSize);
     };
 
@@ -302,7 +306,7 @@ Window::Window()
     nativeWindow.width = clientWidth;
     nativeWindow.height = clientHeight;
     vc_dispmanx_update_submit_sync(dispmanUpdate);
-    guard += [&](){
+    rollback += [&](){
         dispmanUpdate = vc_dispmanx_update_start(0);
         vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
         vc_dispmanx_update_submit_sync(dispmanUpdate);
@@ -312,7 +316,7 @@ Window::Window()
     if (eglSurface == EGL_NO_SURFACE) {
         throw std::runtime_error("Cannot create new EGL window surface");
     }
-    guard += [&](){
+    rollback += [&](){
         eglDestroySurface(eglDisplay, eglSurface);
     };
 #else
@@ -342,7 +346,7 @@ Window::Window()
     if (!RegisterClassEx(&wcex)) {
         throw std::runtime_error("Cannot create OpenGL window");
     }
-    ScopeGuard guard([&](){
+    ScopeGuard rollback([&](){
         UnregisterClass("OpenGLWindow", hInstance);
     });
 
@@ -371,7 +375,7 @@ Window::Window()
     }
 
     ShowWindow(hWnd, SW_SHOW);
-    guard += [&](){
+    rollback += [&](){
         DestroyWindow(hWnd);
     };
 
@@ -379,7 +383,7 @@ Window::Window()
     if (hDC == NULL) {
         throw std::runtime_error("Cannot obtain device context handle");
     }
-    guard += [&](){
+    rollback += [&](){
         ReleaseDC(hWnd, hDC);
     };
 
@@ -404,12 +408,9 @@ Window::Window()
 
     hRC = wglCreateContext(hDC);
     if (hRC == NULL) {
-        ReleaseDC(hWnd, hDC);
-        DestroyWindow(hWnd);
-        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot create OpenGL rendering context");
     }
-    guard += [&](){
+    rollback += [&](){
         wglDeleteContext(hRC);
     };
 #endif
@@ -424,7 +425,7 @@ Window::Window()
     if (!wglMakeCurrent(hDC, hRC)) {
         throw std::runtime_error("Cannot attach OpenGL rendering context to thread");
     }
-    guard += [&](){
+    rollback += [&](){
         wglMakeCurrent(NULL, NULL);
     };
 
@@ -1161,7 +1162,7 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
     if (!file.is_open()) {
         throw std::runtime_error("Cannot open font file");
     }
-    ScopeGuard scope([&](){
+    ScopeGuard rollback([&](){
         file.close();
     });
     file.read(reinterpret_cast<char *>(buffer), 4);
