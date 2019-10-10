@@ -4,6 +4,7 @@
 #include <memory>
 #include <thread>
 #include <chrono>
+#include <deque>
 #include "lodepng/lodepng.h"
 #ifndef _WIN32
 #include <iostream>
@@ -31,6 +32,46 @@ using std::min;
 #endif
 
 #define NUMBER_OF_PARTICLES 16
+
+class ScopeGuard {
+    public:
+        ScopeGuard() = default;
+        ScopeGuard(std::function<void()> &&func);
+        ScopeGuard &operator+=(std::function<void()> &&func);
+        virtual ~ScopeGuard();
+    private:
+        std::deque<std::function<void()>> handlers;
+};
+
+ScopeGuard::ScopeGuard(std::function<void()> &&func)
+{
+    this->operator+=(std::forward<std::function<void()>>(func));
+}
+
+ScopeGuard &ScopeGuard::operator+=(std::function<void()> &&func)
+{
+    try {
+        handlers.emplace_front(std::forward<std::function<void()>>(func));
+        return *this;
+    } catch(...) {
+        func();
+        throw;
+    }
+}
+
+ScopeGuard::~ScopeGuard()
+{
+    if (!std::uncaught_exception()) {
+        return;
+    }
+    for (auto &func : handlers) {
+        try {
+            func();
+        } catch(...) {
+            /* std::terminate(); */
+        }
+    }
+}
 
 #ifdef _WIN32
 PFNGLACTIVETEXTUREPROC glActiveTexture;
@@ -133,25 +174,28 @@ Window::Window()
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         throw std::runtime_error("Cannot create SDL window");
     }
+    ScopeGuard guard([&](){
+        SDL_Quit();
+    });
 
     SDL_WM_SetCaption("SDL Window", "SDL Icon");
 
     SDL_Surface *sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
     if (sdlScreen == nullptr) {
-        SDL_Quit();
         throw std::runtime_error("Cannot create SDL window");
     }
 
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (eglDisplay == EGL_NO_DISPLAY) {
-        SDL_Quit();
         throw std::runtime_error("Cannot obtain EGL display connection");
     }
 
     if (eglInitialize(eglDisplay, nullptr, nullptr) != EGL_TRUE) {
-        SDL_Quit();
         throw std::runtime_error("Cannot initialize EGL display connection");
     }
+    guard += [&](){
+        eglTerminate(eglDisplay);
+    };
 
     static const EGLint attribList[] =
     {
@@ -167,16 +211,12 @@ Window::Window()
     EGLConfig config;
     EGLint numConfig;
     if (eglChooseConfig(eglDisplay, attribList, &config, 1, &numConfig) != EGL_TRUE) {
-        eglTerminate(eglDisplay);
-        SDL_Quit();
         throw std::runtime_error("Cannot obtain EGL frame buffer configuration");
     }
 
     if (eglBindAPI(EGL_OPENGL_ES_API) != EGL_TRUE) {
-        eglTerminate(eglDisplay);
-        SDL_Quit();
         throw std::runtime_error("Cannot set rendering API");
-	}
+    }
 
     static const EGLint contextAttrib[] =
     {
@@ -186,15 +226,13 @@ Window::Window()
 
     eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttrib);
     if (eglContext == EGL_NO_CONTEXT) {
-        eglTerminate(eglDisplay);
-        SDL_Quit();
         throw std::runtime_error("Cannot create EGL rendering context");
     }
+    guard += [&](){
+        eglDestroyContext(eglDisplay, eglContext);
+    };
 
     if (graphics_get_display_size(0, &clientWidth, &clientHeight) < 0) {
-        eglDestroyContext(eglDisplay, eglContext);
-        eglTerminate(eglDisplay);
-        SDL_Quit();
         throw std::runtime_error("Cannot obtain screen resolution");
     }
 
@@ -212,6 +250,9 @@ Window::Window()
 
     dispmanDisplay = vc_dispmanx_display_open(0);
     DISPMANX_UPDATE_HANDLE_T dispmanUpdate = vc_dispmanx_update_start(0);
+    guard += [&](){
+        vc_dispmanx_display_close(dispmanDisplay)
+    };
 
 #ifdef TFT_OUTPUT
     uint32_t image;
@@ -221,45 +262,34 @@ Window::Window()
 
     fbFd = open("/dev/fb1", O_RDWR);
     if (fbFd < 0) {
-        vc_dispmanx_display_close(dispmanDisplay);
-        eglDestroyContext(eglDisplay, eglContext);
-        eglTerminate(eglDisplay);
-        SDL_Quit();
         throw std::runtime_error("Cannot open secondary framebuffer");
     }
+    guard += [&](){
+        close(fbFd);
+    };
     if (ioctl(fbFd, FBIOGET_FSCREENINFO, &fInfo) ||
         ioctl(fbFd, FBIOGET_VSCREENINFO, &vInfo)) {
-        close(fbFd);
-        vc_dispmanx_display_close(dispmanDisplay);
-        eglDestroyContext(eglDisplay, eglContext);
-        eglTerminate(eglDisplay);
-        SDL_Quit();
         throw std::runtime_error("Cannot access secondary framebuffer information");
     }
 
     dispmanResource = vc_dispmanx_resource_create(VC_IMAGE_RGB565, vInfo.xres, vInfo.yres, &image);
     if (!dispmanResource) {
-        close(fbFd);
-        vc_dispmanx_display_close(dispmanDisplay);
-        eglDestroyContext(eglDisplay, eglContext);
-        eglTerminate(eglDisplay);
-        SDL_Quit();
         throw std::runtime_error("Cannot initialize secondary display");
     }
+    guard += [&](){
+        vc_dispmanx_resource_delete(dispmanResource);
+    };
 
     fbMemSize = fInfo.smem_len;
     fbLineSize = vInfo.xres * vInfo.bits_per_pixel >> 3;
 
     framebuffer = reinterpret_cast<uint8_t *>(mmap(nullptr, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0));
     if (framebuffer == MAP_FAILED) {
-        vc_dispmanx_resource_delete(dispmanResource);
-        close(fbFd);
-        vc_dispmanx_display_close(dispmanDisplay);
-        eglDestroyContext(eglDisplay, eglContext);
-        eglTerminate(eglDisplay);
-        SDL_Quit();
         throw std::runtime_error("Cannot initialize secondary framebuffer memory mapping");
     }
+    guard += [&](){
+        munmap(framebuffer, fbMemSize);
+    };
 
     vc_dispmanx_rect_set(&dispmanRect, 0, 0, vInfo.xres, vInfo.yres);
 #endif
@@ -272,23 +302,19 @@ Window::Window()
     nativeWindow.width = clientWidth;
     nativeWindow.height = clientHeight;
     vc_dispmanx_update_submit_sync(dispmanUpdate);
-
-    eglSurface = eglCreateWindowSurface(eglDisplay, config, &nativeWindow, nullptr);
-    if (eglSurface == EGL_NO_SURFACE) {
+    guard += [&](){
         dispmanUpdate = vc_dispmanx_update_start(0);
         vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
         vc_dispmanx_update_submit_sync(dispmanUpdate);
-#ifdef TFT_OUTPUT
-        munmap(framebuffer, fbMemSize);
-        vc_dispmanx_resource_delete(dispmanResource);
-        close(fbFd);
-#endif
-        vc_dispmanx_display_close(dispmanDisplay);
-        eglDestroyContext(eglDisplay, eglContext);
-        eglTerminate(eglDisplay);
-        SDL_Quit();
+    };
+
+    eglSurface = eglCreateWindowSurface(eglDisplay, config, &nativeWindow, nullptr);
+    if (eglSurface == EGL_NO_SURFACE) {
         throw std::runtime_error("Cannot create new EGL window surface");
     }
+    guard += [&](){
+        eglDestroySurface(eglDisplay, eglSurface);
+    };
 #else
 #ifndef FORCE_FULLSCREEN
     clientWidth = 640;
@@ -316,6 +342,9 @@ Window::Window()
     if (!RegisterClassEx(&wcex)) {
         throw std::runtime_error("Cannot create OpenGL window");
     }
+    ScopeGuard guard([&](){
+        UnregisterClass("OpenGLWindow", hInstance);
+    });
 
     DWORD exStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
     DWORD style = WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX;
@@ -326,7 +355,6 @@ Window::Window()
     clientArea.bottom = clientHeight;
 
     if(!AdjustWindowRectEx(&clientArea, style, false, exStyle)) {
-        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot create OpenGL window");
     }
 
@@ -339,18 +367,21 @@ Window::Window()
 #endif
 
     if (hWnd == NULL) {
-        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot create OpenGL window");
     }
 
     ShowWindow(hWnd, SW_SHOW);
+    guard += [&](){
+        DestroyWindow(hWnd);
+    };
 
     hDC = GetDC(hWnd);
     if (hDC == NULL) {
-        DestroyWindow(hWnd);
-        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot obtain device context handle");
     }
+    guard += [&](){
+        ReleaseDC(hWnd, hDC);
+    };
 
     PIXELFORMATDESCRIPTOR pfd;
     std::memset(&pfd, 0, sizeof(pfd));
@@ -364,16 +395,10 @@ Window::Window()
 
     GLuint pixelFormat = ChoosePixelFormat(hDC, &pfd);
     if (!pixelFormat) {
-        ReleaseDC(hWnd, hDC);
-        DestroyWindow(hWnd);
-        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot obtain correct pixel format configuration");
     }
 
     if (!SetPixelFormat(hDC, pixelFormat, &pfd)) {
-        ReleaseDC(hWnd, hDC);
-        DestroyWindow(hWnd);
-        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot set correct pixel format configuration");
     }
 
@@ -384,35 +409,24 @@ Window::Window()
         UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot create OpenGL rendering context");
     }
+    guard += [&](){
+        wglDeleteContext(hRC);
+    };
 #endif
 
 #ifndef _WIN32
     if (eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext) != EGL_TRUE) {
-        eglDestroySurface(eglDisplay, eglSurface);
-        dispmanUpdate = vc_dispmanx_update_start(0);
-        vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
-        vc_dispmanx_update_submit_sync(dispmanUpdate);
-#ifdef TFT_OUTPUT
-        munmap(framebuffer, fbMemSize);
-        vc_dispmanx_resource_delete(dispmanResource);
-        close(fbFd);
-#endif
-        vc_dispmanx_display_close(dispmanDisplay);
-        eglDestroyContext(eglDisplay, eglContext);
-        eglTerminate(eglDisplay);
-        SDL_Quit();
         throw std::runtime_error("Cannot attach EGL rendering context to EGL surface");
     }
 
     quit = false;
 #else
     if (!wglMakeCurrent(hDC, hRC)) {
-        wglDeleteContext(hRC);
-        ReleaseDC(hWnd, hDC);
-        DestroyWindow(hWnd);
-        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot attach OpenGL rendering context to thread");
     }
+    guard += [&](){
+        wglMakeCurrent(NULL, NULL);
+    };
 
     GLint attribs[] = {
         WGL_CONTEXT_MAJOR_VERSION_ARB, 2,
@@ -421,39 +435,19 @@ Window::Window()
         0
     };
 
-    try {
-        InitGL();
-    } catch (std::runtime_error e) {
-        wglMakeCurrent(NULL, NULL);
-        wglDeleteContext(hRC);
-        ReleaseDC(hWnd, hDC);
-        DestroyWindow(hWnd);
-        UnregisterClass("OpenGLWindow", hInstance);
-        throw e;
-    }
+    InitGL();
 
     HGLRC hRC2 = wglCreateContextAttribsARB(hDC, hRC, attribs);
     if (hRC2 == NULL) {
-        wglMakeCurrent(NULL, NULL);
-        wglDeleteContext(hRC);
-        ReleaseDC(hWnd, hDC);
-        DestroyWindow(hWnd);
-        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot create OpenGL rendering context");
     }
 
     wglDeleteContext(hRC);
+    hRC = hRC2;
 
-    if (!wglMakeCurrent(hDC, hRC2)) {
-        wglMakeCurrent(NULL, NULL);
-        wglDeleteContext(hRC2);
-        ReleaseDC(hWnd, hDC);
-        DestroyWindow(hWnd);
-        UnregisterClass("OpenGLWindow", hInstance);
+    if (!wglMakeCurrent(hDC, hRC)) {
         throw std::runtime_error("Cannot attach OpenGL rendering context to thread");
     }
-
-    hRC = hRC2;
 #endif
 }
 
@@ -1167,53 +1161,52 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
     if (!file.is_open()) {
         throw std::runtime_error("Cannot open font file");
     }
-    auto throwWrongFormat = [&]() {
+    ScopeGuard scope([&](){
         file.close();
-        throw std::runtime_error("Cannot load font file, wrong file format");
-    };
+    });
     file.read(reinterpret_cast<char *>(buffer), 4);
     if ((file.rdstate() & std::ifstream::eofbit) || std::string(reinterpret_cast<char *>(buffer), 4) != "FONT") {
-        throwWrongFormat();
+        throw std::runtime_error("Cannot load font file, wrong file format");
     }
     file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
     if (file.rdstate() & std::ifstream::eofbit) {
-        throwWrongFormat();
+        throw std::runtime_error("Cannot load font file, wrong file format");
     }
     uint8_t length = *(reinterpret_cast<uint8_t *>(buffer));
     file.read(reinterpret_cast<char *>(buffer), length * sizeof(uint8_t));
     if (file.rdstate() & std::ifstream::eofbit) {
-        throwWrongFormat();
+        throw std::runtime_error("Cannot load font file, wrong file format");
     }
     name = std::string(reinterpret_cast<char *>(buffer), length * sizeof(uint8_t));
     file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
     if (file.rdstate() & std::ifstream::eofbit) {
-        throwWrongFormat();
+        throw std::runtime_error("Cannot load font file, wrong file format");
     }
     uint8_t height = *(reinterpret_cast<uint8_t *>(buffer));
     file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
     if (file.rdstate() & std::ifstream::eofbit) {
-        throwWrongFormat();
+        throw std::runtime_error("Cannot load font file, wrong file format");
     }
     uint16_t chars = *buffer;
     for (uint16_t i = 0; i < chars; i++) {
         file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
         if (file.rdstate() & std::ifstream::eofbit) {
-            throwWrongFormat();
+            throw std::runtime_error("Cannot load font file, wrong file format");
         }
         uint8_t size = *(reinterpret_cast<uint8_t *>(buffer));
         file.read(reinterpret_cast<char *>(buffer), size * sizeof(uint8_t));
         if (file.rdstate() & std::ifstream::eofbit) {
-            throwWrongFormat();
+            throw std::runtime_error("Cannot load font file, wrong file format");
         }
         std::string code = std::string(reinterpret_cast<char *>(buffer), size * sizeof(uint8_t));
         file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
         if (file.rdstate() & std::ifstream::eofbit) {
-            throwWrongFormat();
+            throw std::runtime_error("Cannot load font file, wrong file format");
         }
         GLfloat width = *(reinterpret_cast<uint8_t *>(buffer)) / static_cast<GLfloat>(height);
         file.read(reinterpret_cast<char *>(buffer), 2 * sizeof(uint8_t));
         if (file.rdstate() & std::ifstream::eofbit) {
-            throwWrongFormat();
+            throw std::runtime_error("Cannot load font file, wrong file format");
         }
         CharOffset offset = {
             (reinterpret_cast<int8_t *>(buffer))[0] / static_cast<GLfloat>(height),
@@ -1221,7 +1214,7 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
         };
         file.read(reinterpret_cast<char *>(buffer), 4 * sizeof(uint16_t));
         if (file.rdstate() & std::ifstream::eofbit) {
-            throwWrongFormat();
+            throw std::runtime_error("Cannot load font file, wrong file format");
         }
         TextureRect textureRect = {
             buffer[0] / static_cast<GLfloat>(texture.GetWidth()),
@@ -1236,18 +1229,18 @@ Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
         FontChar fontChar(code, width, offset, textureRect, dimensions);
         file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
         if (file.rdstate() & std::ifstream::eofbit) {
-            throwWrongFormat();
+            throw std::runtime_error("Cannot load font file, wrong file format");
         }
         uint16_t advances = *buffer;
         for (uint16_t j = 0; j < advances; j++) {
             file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
             if (file.rdstate() & std::ifstream::eofbit) {
-                throwWrongFormat();
+                throw std::runtime_error("Cannot load font file, wrong file format");
             }
             uint16_t character = *buffer;
             file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
             if (file.rdstate() & std::ifstream::eofbit) {
-                throwWrongFormat();
+                throw std::runtime_error("Cannot load font file, wrong file format");
             }
             fontChar.AddAdvance({
                 character,
