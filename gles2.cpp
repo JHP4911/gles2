@@ -37,31 +37,24 @@ class ScopeGuard {
     public:
         ScopeGuard() = default;
         template <class T>
-        ScopeGuard(T &&func);
+        ScopeGuard(T &&func) {
+            this->operator+=<T>(std::forward<T>(func));
+        }
         template <class T>
-        ScopeGuard &operator+=(T &&func);
+        ScopeGuard &operator+=(T &&func) {
+            try {
+                handlers.emplace_front(std::forward<T>(func));
+                return *this;
+            }
+            catch (...) {
+                func();
+                throw;
+            }
+        }
         virtual ~ScopeGuard();
     private:
         std::deque<std::function<void()>> handlers;
 };
-
-template <class T>
-ScopeGuard::ScopeGuard(T &&func)
-{
-    this->operator+=<T>(std::forward<T>(func));
-}
-
-template <class T>
-ScopeGuard &ScopeGuard::operator+=(T &&func)
-{
-    try {
-        handlers.emplace_front(std::forward<T>(func));
-        return *this;
-    } catch(...) {
-        func();
-        throw;
-    }
-}
 
 ScopeGuard::~ScopeGuard()
 {
@@ -524,7 +517,7 @@ WindowEvent Window::PollEvent()
         return event;
     } else if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT) {
-            exitCode = msg.wParam;
+            exitCode = static_cast<int32_t>(msg.wParam);
             return WINDOW_EVENT_APPLICATION_TERMINATED;
         } else {
             TranslateMessage(&msg);
@@ -1365,7 +1358,7 @@ void Font::RenderText(std::string text, GLfloat left, GLfloat top, GLfloat heigh
             renderHeight = -offsetTop;
         }
 
-        i += fontChar.GetCode().length() - 1;
+        i += static_cast<uint32_t>(fontChar.GetCode().length()) - 1;
         lastCharIndex = charIndex;
         primitives += 2;
     }
@@ -1638,11 +1631,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             }
         }
     } catch (std::exception &e) {
-        #ifndef _WIN32
-            std::cout << e.what() << std::endl;
-        #else
-            MessageBox(NULL, e.what(), "Exception", MB_OK | MB_ICONERROR);
-        #endif
+#ifndef _WIN32
+       std::cout << e.what() << std::endl;
+#else
+        MessageBox(NULL, e.what(), "Exception", MB_OK | MB_ICONERROR);
+#endif
         return 1;
     }
 
