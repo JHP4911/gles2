@@ -752,8 +752,8 @@ class Texture
 
 Texture::Texture(const char *textureSrc)
 {
-    std::vector<uint8_t> data;
-    GLuint error = lodepng::decode(data, width, height, textureSrc);
+    std::vector<uint8_t> image;
+    GLuint error = lodepng::decode(image, width, height, textureSrc);
     if (error) {
         throw std::runtime_error("Cannot load texture");
     }
@@ -761,7 +761,7 @@ Texture::Texture(const char *textureSrc)
     glBindTexture(GL_TEXTURE_2D, texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, &(data[0]));
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.data());
 }
 
 Texture::Texture(GLuint width, GLuint height, GLchar *data) :
@@ -1382,11 +1382,11 @@ void Font::RenderText(std::string text, GLfloat left, GLfloat top, GLfloat heigh
     glEnableVertexAttribArray(textureAttribute);
 
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(GLfloat), &(vertexData[0]), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(GLfloat), vertexData.data(), GL_STATIC_DRAW);
     glVertexAttribPointer(positionAttribute, 3, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
 
     glBindBuffer(GL_ARRAY_BUFFER, textureBuffer);
-    glBufferData(GL_ARRAY_BUFFER, textureData.size() * sizeof(GLfloat), &(textureData[0]), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, textureData.size() * sizeof(GLfloat), textureData.data(), GL_STATIC_DRAW);
     glVertexAttribPointer(textureAttribute, 2, GL_FLOAT, GL_FALSE, 0, (GLvoid *)0);
 
     glDrawArrays(GL_TRIANGLES, 0, primitives * 3);
