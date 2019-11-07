@@ -5,6 +5,7 @@
 #include <thread>
 #include <chrono>
 #include <deque>
+#include <functional>
 #include "lodepng/lodepng.h"
 #ifndef _WIN32
 #include <iostream>
