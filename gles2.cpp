@@ -249,7 +249,7 @@ Window::Window()
     dispmanDisplay = vc_dispmanx_display_open(0);
     DISPMANX_UPDATE_HANDLE_T dispmanUpdate = vc_dispmanx_update_start(0);
     rollback += [&](){
-        vc_dispmanx_display_close(dispmanDisplay)
+        vc_dispmanx_display_close(dispmanDisplay);
     };
 
 #ifdef TFT_OUTPUT
