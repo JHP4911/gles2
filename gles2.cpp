@@ -101,16 +101,16 @@ PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
 PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
 #endif
 
-enum class WindowEvent {
-    WINDOW_EVENT_NO_EVENT,
-    WINDOW_EVENT_ESC_KEY_PRESSED,
-    WINDOW_EVENT_WINDOW_CLOSED,
-    WINDOW_EVENT_APPLICATION_TERMINATED
-};
-
 class Window
 {
     public:
+        enum class EventType {
+            NO_EVENT,
+            KEY_PRESSED_ESC,
+            WINDOW_CLOSED,
+            APPLICATION_TERMINATED
+        };
+
 #ifdef _WIN32
         static int32_t exitCode;
 #endif
@@ -123,7 +123,7 @@ class Window
         void Close();
         bool SwapBuffers();
         void GetClientSize(uint32_t &width, uint32_t &height);
-        WindowEvent PollEvent();
+        EventType PollEvent();
     private:
 #ifndef _WIN32
         DISPMANX_DISPLAY_HANDLE_T dispmanDisplay;
@@ -145,7 +145,7 @@ class Window
         HANDLE eventLoopThread;
         HGLRC hRC;
         HDC hDC;
-        static std::queue<WindowEvent> events;
+        static std::queue<EventType> events;
 #endif
         uint32_t clientWidth, clientHeight;
 
@@ -161,7 +161,7 @@ class Window
 
 #ifdef _WIN32
 int32_t Window::exitCode = 0;
-std::queue<WindowEvent> Window::events;
+std::queue<Window::EventType> Window::events;
 #endif
 
 Window::Window()
@@ -500,33 +500,33 @@ bool Window::SwapBuffers()
 #endif
 }
 
-WindowEvent Window::PollEvent()
+Window::EventType Window::PollEvent()
 {
 #ifndef _WIN32
     SDL_Event event;
     if (SDL_PollEvent(&event)) {
         if ((event.type == SDL_KEYDOWN) && (event.key.keysym.sym == SDLK_ESCAPE)) {
-            return WINDOW_EVENT_ESC_KEY_PRESSED;
+            return EventType::KEY_PRESSED_ESC;
         }
     } else if (quit) {
-        return WINDOW_EVENT_APPLICATION_TERMINATED;
+        return EventType::APPLICATION_TERMINATED;
 #else
     MSG msg;
     if (!events.empty()) {
-        WindowEvent event = events.back();
+        EventType event = events.back();
         events.pop();
         return event;
     } else if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT) {
             exitCode = static_cast<int32_t>(msg.wParam);
-            return WindowEvent::WINDOW_EVENT_APPLICATION_TERMINATED;
+            return EventType::APPLICATION_TERMINATED;
         } else {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
 #endif
     }
-    return WindowEvent::WINDOW_EVENT_NO_EVENT;
+    return EventType::NO_EVENT;
 }
 
 
@@ -575,10 +575,10 @@ void Window::InitGL()
 LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_CLOSE) {
-        events.push(WindowEvent::WINDOW_EVENT_WINDOW_CLOSED);
+        events.push(EventType::WINDOW_CLOSED);
         return 0;
     } else if ((msg == WM_KEYDOWN) && (wParam == VK_ESCAPE)) {
-        events.push(WindowEvent::WINDOW_EVENT_ESC_KEY_PRESSED);
+        events.push(EventType::KEY_PRESSED_ESC);
         return 0;
     } else if ((msg == WM_SETCURSOR) && (LOWORD(lParam) == HTCLIENT)) {
         SetCursor(NULL);
@@ -596,15 +596,15 @@ void Window::GetClientSize(uint32_t &width, uint32_t &height)
     height = clientHeight;
 }
 
-enum class ShaderSource {
-    GL_SHADER_CODE_FROM_STRING,
-    GL_SHADER_CODE_FROM_FILE
-};
-
 class ShaderProgram
 {
     public:
-        ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, ShaderSource srcType);
+        enum class SourceType {
+            LOAD_FROM_STRING,
+            LOAD_FROM_FILE
+        };
+
+        ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, SourceType srcType);
         ShaderProgram(const ShaderProgram &) = delete;
         ShaderProgram(ShaderProgram &&) = delete;
         ShaderProgram &operator=(const ShaderProgram &) = delete;
@@ -616,10 +616,10 @@ class ShaderProgram
         GLuint fragmentShader;
         GLuint program;
 
-        GLuint LoadShader(const char *shaderSrc, ShaderSource srcType, GLenum shaderType);
+        GLuint LoadShader(const char *shaderSrc, SourceType srcType, GLenum shaderType);
 };
 
-ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, ShaderSource srcType)
+ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, SourceType srcType)
 {
     GLint isLinked;
 
@@ -676,7 +676,7 @@ GLuint ShaderProgram::GetProgram()
     return program;
 }
 
-GLuint ShaderProgram::LoadShader(const char *shaderSrc, ShaderSource srcType, GLenum shaderType)
+GLuint ShaderProgram::LoadShader(const char *shaderSrc, SourceType srcType, GLenum shaderType)
 {
     GLuint shader;
     GLint isCompiled, length;
@@ -684,7 +684,7 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, ShaderSource srcType, GL
 
     std::ifstream file;
     switch (srcType) {
-    case ShaderSource::GL_SHADER_CODE_FROM_FILE:
+	case SourceType::LOAD_FROM_FILE:
             file.open(shaderSrc, std::ifstream::binary);
             if (!file.is_open()) {
                 return 0;
@@ -696,7 +696,7 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, ShaderSource srcType, GL
             file.read(code, length);
             file.close();
             break;
-    case ShaderSource::GL_SHADER_CODE_FROM_STRING:
+    case SourceType::LOAD_FROM_STRING:
             code = const_cast<GLchar *>(shaderSrc);
             length = static_cast<GLint>(strlen(code));
             break;
@@ -791,15 +791,15 @@ GLuint Texture::GetHeight() {
     return height;
 }
 
-enum class RotationType {
-    ROTATION_AXIS_X,
-    ROTATION_AXIS_Y,
-    ROTATION_AXIS_Z
-};
-
 class Matrix
 {
     public:
+        enum class RotationType {
+            AXIS_X,
+            AXIS_Y,
+            AXIS_Z
+        };
+
         Matrix();
         Matrix(const Matrix &source);
         Matrix(Matrix &&source) noexcept;
@@ -922,21 +922,21 @@ Matrix Matrix::GenerateRotation(GLfloat angle, RotationType type)
     GLfloat cosAngle = static_cast<GLfloat>(cos(angle));
 
     switch (type) {
-        case RotationType::ROTATION_AXIS_X:
+        case RotationType::AXIS_X:
             data[0] = 1.0f;
             data[5] = cosAngle;
             data[6] = sinAngle;
             data[9] = -sinAngle;
             data[10] = cosAngle;
             break;
-        case RotationType::ROTATION_AXIS_Y:
+        case RotationType::AXIS_Y:
             data[0] = cosAngle;
             data[2] = sinAngle;
             data[5] = 1.0f;
             data[8] = -sinAngle;
             data[10] = cosAngle;
             break;
-        case RotationType::ROTATION_AXIS_Z:
+        case RotationType::AXIS_Z:
         default:
             data[0] = cosAngle;
             data[1] = sinAngle;
@@ -1591,18 +1591,18 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
         GLfloat screenRatio = width / static_cast<GLfloat>(height);
 
         Texture fontTexture("images/euphemia.png");
-        ShaderProgram fontShader("shaders/particle.vs", "shaders/particle.fs", ShaderSource::GL_SHADER_CODE_FROM_FILE);
+        ShaderProgram fontShader("shaders/particle.vs", "shaders/particle.fs", ShaderProgram::SourceType::LOAD_FROM_FILE);
         Font font("fonts/euphemia.fnt", fontTexture, fontShader);
 
         Texture backgroundTexture("images/background.png");
-        ShaderProgram backgroundShader("shaders/background.vs", "shaders/background.fs", ShaderSource::GL_SHADER_CODE_FROM_FILE);
+        ShaderProgram backgroundShader("shaders/background.vs", "shaders/background.fs", ShaderProgram::SourceType::LOAD_FROM_FILE);
         Texture particleTexture("images/particle.png");
-        ShaderProgram particleShader("shaders/particle.vs", "shaders/particle.fs", ShaderSource::GL_SHADER_CODE_FROM_FILE);
+        ShaderProgram particleShader("shaders/particle.vs", "shaders/particle.fs", ShaderProgram::SourceType::LOAD_FROM_FILE);
         Background background(backgroundTexture, backgroundShader, particleTexture, particleShader, screenRatio);
 
         while (!quit) {
             switch (window->PollEvent()) {
-                case WindowEvent::WINDOW_EVENT_NO_EVENT:
+                case Window::EventType::NO_EVENT:
                     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
                     glClear(GL_COLOR_BUFFER_BIT);
                     background.Render();
@@ -1621,11 +1621,11 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _
                     background.Animate();
                     std::this_thread::sleep_for(std::chrono::microseconds(10000));
                     break;
-                case WindowEvent::WINDOW_EVENT_ESC_KEY_PRESSED:
-                case WindowEvent::WINDOW_EVENT_WINDOW_CLOSED:
+                case Window::EventType::KEY_PRESSED_ESC:
+                case Window::EventType::WINDOW_CLOSED:
                     window->Close();
                     break;
-                case WindowEvent::WINDOW_EVENT_APPLICATION_TERMINATED:
+                case Window::EventType::APPLICATION_TERMINATED:
                     quit = true;
                     break;
             }
