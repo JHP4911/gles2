@@ -142,7 +142,6 @@ class Window
 #else
         HWND hWnd;
         HINSTANCE hInstance;
-        HANDLE eventLoopThread;
         HGLRC hRC;
         HDC hDC;
         static std::queue<EventType> events;
