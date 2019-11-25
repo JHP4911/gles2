@@ -511,11 +511,7 @@ Window::EventType Window::PollEvent()
         return EventType::APPLICATION_TERMINATED;
 #else
     MSG msg;
-    if (!events.empty()) {
-        EventType event = events.back();
-        events.pop();
-        return event;
-    } else if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+    if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) > 0) {
         if (msg.message == WM_QUIT) {
             exitCode = static_cast<int32_t>(msg.wParam);
             return EventType::APPLICATION_TERMINATED;
@@ -523,6 +519,11 @@ Window::EventType Window::PollEvent()
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+    }
+    if (!events.empty()) {
+        EventType event = events.back();
+        events.pop();
+        return event;
 #endif
     }
     return EventType::NO_EVENT;
@@ -581,8 +582,6 @@ LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
         return 0;
     } else if ((msg == WM_SETCURSOR) && (LOWORD(lParam) == HTCLIENT)) {
         SetCursor(NULL);
-        return 0;
-    } else if (msg == WM_DESTROY) {
         return 0;
     }
     return DefWindowProc(hWnd, msg, wParam, lParam);
