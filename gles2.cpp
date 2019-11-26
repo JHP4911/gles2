@@ -119,7 +119,7 @@ class Window
         Window(Window &&) = delete;
         Window &operator=(const Window &) = delete;
         virtual ~Window();
-        static Window &Initialize();
+        static Window &GetInstance();
         void Close();
         bool SwapBuffers();
         void GetClientSize(uint32_t &width, uint32_t &height);
@@ -144,7 +144,7 @@ class Window
         HINSTANCE hInstance;
         HGLRC hRC;
         HDC hDC;
-        static std::queue<EventType> events;
+        std::queue<EventType> events;
 #endif
         uint32_t clientWidth, clientHeight;
 
@@ -160,7 +160,6 @@ class Window
 
 #ifdef _WIN32
 int32_t Window::exitCode = 0;
-std::queue<Window::EventType> Window::events;
 #endif
 
 Window::Window()
@@ -471,7 +470,7 @@ Window::~Window()
 #endif
 }
 
-Window &Window::Initialize()
+Window &Window::GetInstance()
 {
     static Window instance;
     return instance;
@@ -511,7 +510,7 @@ Window::EventType Window::PollEvent()
         return EventType::APPLICATION_TERMINATED;
 #else
     MSG msg;
-    if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) > 0) {
+    if (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE) > 0) {
         if (msg.message == WM_QUIT) {
             exitCode = static_cast<int32_t>(msg.wParam);
             return EventType::APPLICATION_TERMINATED;
@@ -575,10 +574,10 @@ void Window::InitGL()
 LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_CLOSE) {
-        events.push(EventType::WINDOW_CLOSED);
+        GetInstance().events.push(EventType::WINDOW_CLOSED);
         return 0;
     } else if ((msg == WM_KEYDOWN) && (wParam == VK_ESCAPE)) {
-        events.push(EventType::KEY_PRESSED_ESC);
+        GetInstance().events.push(EventType::KEY_PRESSED_ESC);
         return 0;
     } else if ((msg == WM_SETCURSOR) && (LOWORD(lParam) == HTCLIENT)) {
         SetCursor(NULL);
@@ -1581,7 +1580,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #endif
 
     try {
-        Window *window = &Window::Initialize();
+        Window *window = &Window::GetInstance();
 
         uint32_t width, height;
         window->GetClientSize(width, height);
