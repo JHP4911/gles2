@@ -21,7 +21,6 @@
 #include <GLES2/gl2.h>
 #include <bcm_host.h>
 #else
-#include <queue>
 #include <windows.h>
 #include <GL/gl.h>
 #include "GL/glext.h"
@@ -123,7 +122,7 @@ class Window
         void Close();
         bool SwapBuffers();
         void GetClientSize(uint32_t &width, uint32_t &height);
-        EventType PollEvent();
+        EventType GetEvent();
     private:
 #ifndef _WIN32
         DISPMANX_DISPLAY_HANDLE_T dispmanDisplay;
@@ -142,9 +141,9 @@ class Window
 #else
         HWND hWnd;
         HINSTANCE hInstance;
+        EventType event;
         HGLRC hRC;
         HDC hDC;
-        std::queue<EventType> events;
 #endif
         uint32_t clientWidth, clientHeight;
 
@@ -498,7 +497,7 @@ bool Window::SwapBuffers()
 #endif
 }
 
-Window::EventType Window::PollEvent()
+Window::EventType Window::GetEvent()
 {
 #ifndef _WIN32
     SDL_Event event;
@@ -510,24 +509,20 @@ Window::EventType Window::PollEvent()
         return EventType::APPLICATION_TERMINATED;
 #else
     MSG msg;
-    if (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE) > 0) {
+    if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) > 0) {
         if (msg.message == WM_QUIT) {
             exitCode = static_cast<int32_t>(msg.wParam);
             return EventType::APPLICATION_TERMINATED;
         } else {
+            event = EventType::NO_EVENT;
             TranslateMessage(&msg);
             DispatchMessage(&msg);
+            return event;
         }
-    }
-    if (!events.empty()) {
-        EventType event = events.back();
-        events.pop();
-        return event;
 #endif
     }
     return EventType::NO_EVENT;
 }
-
 
 #ifdef _WIN32
 template <class T>
@@ -574,10 +569,10 @@ void Window::InitGL()
 LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_CLOSE) {
-        GetInstance().events.push(EventType::WINDOW_CLOSED);
+        GetInstance().event = EventType::WINDOW_CLOSED;
         return 0;
     } else if ((msg == WM_KEYDOWN) && (wParam == VK_ESCAPE)) {
-        GetInstance().events.push(EventType::KEY_PRESSED_ESC);
+        GetInstance().event = EventType::KEY_PRESSED_ESC;
         return 0;
     } else if ((msg == WM_SETCURSOR) && (LOWORD(lParam) == HTCLIENT)) {
         SetCursor(NULL);
@@ -1598,7 +1593,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         Background background(backgroundTexture, backgroundShader, particleTexture, particleShader, screenRatio);
 
         while (!quit) {
-            switch (window->PollEvent()) {
+            switch (window->GetEvent()) {
                 case Window::EventType::NO_EVENT:
                     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
                     glClear(GL_COLOR_BUFFER_BIT);
