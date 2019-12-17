@@ -117,7 +117,7 @@ class Window
         Window(const Window &) = delete;
         Window(Window &&) = delete;
         Window &operator=(const Window &) = delete;
-        virtual ~Window();
+        ~Window();
         static Window &GetInstance();
         void Close();
         bool SwapBuffers();
