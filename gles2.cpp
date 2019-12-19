@@ -73,7 +73,7 @@ class Window
         };
 
 #ifdef _WIN32
-        static int32_t exitCode;
+        static int exitCode;
 #endif
 
         Window(const Window &) = delete;
@@ -83,7 +83,7 @@ class Window
         static Window &GetInstance();
         void Close();
         bool SwapBuffers();
-        void GetClientSize(uint32_t &width, uint32_t &height) const;
+        void GetClientSize(unsigned &width, unsigned &height) const;
         EventType GetEvent();
     private:
 #ifndef _WIN32
@@ -95,9 +95,9 @@ class Window
         bool quit;
 #ifdef TFT_OUTPUT
         DISPMANX_RESOURCE_HANDLE_T dispmanResource;
-        uint32_t fbMemSize, fbLineSize;
+        unsigned fbMemSize, fbLineSize;
+        unsigned char *framebuffer;
         VC_RECT_T dispmanRect;
-        uint8_t *framebuffer;
         int fbFd;
 #endif
 #else
@@ -107,7 +107,7 @@ class Window
         HGLRC hRC;
         HDC hDC;
 #endif
-        uint32_t clientWidth, clientHeight;
+        unsigned clientWidth, clientHeight;
 
         Window();
 
@@ -120,7 +120,7 @@ class Window
 };
 
 #ifdef _WIN32
-int32_t Window::exitCode = 0;
+int Window::exitCode = 0;
 #endif
 
 Window::Window()
@@ -212,8 +212,6 @@ Window::Window()
     DISPMANX_UPDATE_HANDLE_T dispmanUpdate = vc_dispmanx_update_start(0);
 
 #ifdef TFT_OUTPUT
-    uint32_t image;
-
     struct fb_var_screeninfo vInfo;
     struct fb_fix_screeninfo fInfo;
 
@@ -1057,7 +1055,7 @@ struct TextureRect
 class FontChar
 {
     public:
-        FontChar(const std::string &code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size);
+        FontChar(const std::string &code, GLfloat width, const CharOffset &offset, const TextureRect &rect, const CharSize &size);
 
         std::string GetCode() const;
         GLfloat GetWidth() const;
@@ -1075,7 +1073,7 @@ class FontChar
         std::vector<CharAdvance> advances;
 };
 
-FontChar::FontChar(const std::string &code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size) :
+FontChar::FontChar(const std::string &code, GLfloat width, const CharOffset &offset, const TextureRect &rect, const CharSize &size) :
     code(code), width(width), offset(offset), textureRect(rect), size(size)
 {
 }
@@ -1126,7 +1124,7 @@ void FontChar::AddAdvance(CharAdvance advance)
 class Font
 {
     public:
-        Font(const std::string &filename, Texture &texture, ShaderProgram &shader);
+        Font(const std::string &filename, const std::shared_ptr<Texture> &texture, const std::shared_ptr<ShaderProgram> &shader);
         Font(const Font &) = delete;
         Font(Font &&) = delete;
         Font &operator=(const Font &) = delete;
@@ -1138,14 +1136,14 @@ class Font
         FontChar GetCharacter(std::string text, uint32_t offset, uint16_t& index) const;
 
         std::string name;
-        Texture *texture;
-        ShaderProgram *shader;
+        std::shared_ptr<Texture> texture;
+        std::shared_ptr<ShaderProgram> shader;
         GLuint vertexBuffer, textureBuffer, positionAttribute, textureAttribute, positionUniform, textureUniform, opacityUniform;
         std::vector<FontChar> font;
 };
 
-Font::Font(const std::string &filename, Texture &texture, ShaderProgram &shader) :
-    texture(&texture), shader(&shader)
+Font::Font(const std::string &filename, const std::shared_ptr<Texture> &texture, const std::shared_ptr<ShaderProgram> &shader) :
+    texture(texture), shader(shader)
 {
     std::ifstream file;
     uint16_t buffer[256];
@@ -1156,47 +1154,47 @@ Font::Font(const std::string &filename, Texture &texture, ShaderProgram &shader)
     try {
         file.read(reinterpret_cast<char*>(buffer), 4);
         if ((file.rdstate() & std::ifstream::eofbit) || std::string(reinterpret_cast<char*>(buffer), 4) != "FONT") {
-            throw std::runtime_error("Cannot load font file, wrong file format");
+            throw std::exception();
         }
         file.read(reinterpret_cast<char*>(buffer), sizeof(uint8_t));
         if (file.rdstate() & std::ifstream::eofbit) {
-            throw std::runtime_error("Cannot load font file, wrong file format");
+            throw std::exception();
         }
         uint8_t length = *(reinterpret_cast<uint8_t*>(buffer));
         file.read(reinterpret_cast<char*>(buffer), length * sizeof(uint8_t));
         if (file.rdstate() & std::ifstream::eofbit) {
-            throw std::runtime_error("Cannot load font file, wrong file format");
+            throw std::exception();
         }
         name = std::string(reinterpret_cast<char*>(buffer), length * sizeof(uint8_t));
         file.read(reinterpret_cast<char*>(buffer), sizeof(uint8_t));
         if (file.rdstate() & std::ifstream::eofbit) {
-            throw std::runtime_error("Cannot load font file, wrong file format");
+            throw std::exception();
         }
         uint8_t height = *(reinterpret_cast<uint8_t*>(buffer));
         file.read(reinterpret_cast<char*>(buffer), sizeof(uint16_t));
         if (file.rdstate() & std::ifstream::eofbit) {
-            throw std::runtime_error("Cannot load font file, wrong file format");
+            throw std::exception();
         }
         uint16_t chars = *buffer;
         for (uint16_t i = 0; i < chars; i++) {
             file.read(reinterpret_cast<char*>(buffer), sizeof(uint8_t));
             if (file.rdstate() & std::ifstream::eofbit) {
-                throw std::runtime_error("Cannot load font file, wrong file format");
+                throw std::exception();
             }
             uint8_t size = *(reinterpret_cast<uint8_t*>(buffer));
             file.read(reinterpret_cast<char*>(buffer), size * sizeof(uint8_t));
             if (file.rdstate() & std::ifstream::eofbit) {
-                throw std::runtime_error("Cannot load font file, wrong file format");
+                throw std::exception();
             }
             std::string code = std::string(reinterpret_cast<char*>(buffer), size * sizeof(uint8_t));
             file.read(reinterpret_cast<char*>(buffer), sizeof(uint8_t));
             if (file.rdstate() & std::ifstream::eofbit) {
-                throw std::runtime_error("Cannot load font file, wrong file format");
+                throw std::exception();
             }
             GLfloat width = *(reinterpret_cast<uint8_t*>(buffer)) / static_cast<GLfloat>(height);
             file.read(reinterpret_cast<char*>(buffer), 2 * sizeof(uint8_t));
             if (file.rdstate() & std::ifstream::eofbit) {
-                throw std::runtime_error("Cannot load font file, wrong file format");
+                throw std::exception();
             }
             CharOffset offset = {
                 (reinterpret_cast<int8_t*>(buffer))[0] / static_cast<GLfloat>(height),
@@ -1204,13 +1202,13 @@ Font::Font(const std::string &filename, Texture &texture, ShaderProgram &shader)
             };
             file.read(reinterpret_cast<char*>(buffer), 4 * sizeof(uint16_t));
             if (file.rdstate() & std::ifstream::eofbit) {
-                throw std::runtime_error("Cannot load font file, wrong file format");
+                throw std::exception();
             }
             TextureRect textureRect = {
-                buffer[0] / static_cast<GLfloat>(texture.GetWidth()),
-                buffer[1] / static_cast<GLfloat>(texture.GetHeight()),
-                buffer[2] / static_cast<GLfloat>(texture.GetWidth()),
-                buffer[3] / static_cast<GLfloat>(texture.GetHeight())
+                buffer[0] / static_cast<GLfloat>(texture->GetWidth()),
+                buffer[1] / static_cast<GLfloat>(texture->GetHeight()),
+                buffer[2] / static_cast<GLfloat>(texture->GetWidth()),
+                buffer[3] / static_cast<GLfloat>(texture->GetHeight())
             };
             CharSize dimensions = {
                 buffer[2] / static_cast<GLfloat>(height),
@@ -1219,18 +1217,18 @@ Font::Font(const std::string &filename, Texture &texture, ShaderProgram &shader)
             FontChar fontChar(code, width, offset, textureRect, dimensions);
             file.read(reinterpret_cast<char*>(buffer), sizeof(uint16_t));
             if (file.rdstate() & std::ifstream::eofbit) {
-                throw std::runtime_error("Cannot load font file, wrong file format");
+                throw std::exception();
             }
             uint16_t advances = *buffer;
             for (uint16_t j = 0; j < advances; j++) {
                 file.read(reinterpret_cast<char*>(buffer), sizeof(uint16_t));
                 if (file.rdstate() & std::ifstream::eofbit) {
-                    throw std::runtime_error("Cannot load font file, wrong file format");
+                    throw std::exception();
                 }
                 uint16_t character = *buffer;
                 file.read(reinterpret_cast<char*>(buffer), sizeof(uint8_t));
                 if (file.rdstate() & std::ifstream::eofbit) {
-                    throw std::runtime_error("Cannot load font file, wrong file format");
+                    throw std::exception();
                 }
                 fontChar.AddAdvance({
                     character,
@@ -1240,15 +1238,16 @@ Font::Font(const std::string &filename, Texture &texture, ShaderProgram &shader)
             AddCharacter(fontChar);
         }
         file.close();
-    } catch (...) {
+    } catch (std::exception &) {
         file.close();
+        throw std::runtime_error("Cannot load font file, wrong file format");
     }
 
-    positionAttribute = glGetAttribLocation(shader.GetProgram(), "vertexPosition");
-    textureAttribute = glGetAttribLocation(shader.GetProgram(), "vertexTexture");
-    positionUniform = glGetUniformLocation(shader.GetProgram(), "positionMatrix");
-    textureUniform = glGetUniformLocation(shader.GetProgram(), "texture");
-    opacityUniform = glGetUniformLocation(shader.GetProgram(), "opacity");
+    positionAttribute = glGetAttribLocation(shader->GetProgram(), "vertexPosition");
+    textureAttribute = glGetAttribLocation(shader->GetProgram(), "vertexTexture");
+    positionUniform = glGetUniformLocation(shader->GetProgram(), "positionMatrix");
+    textureUniform = glGetUniformLocation(shader->GetProgram(), "texture");
+    opacityUniform = glGetUniformLocation(shader->GetProgram(), "opacity");
 
     glGenBuffers(1, &vertexBuffer);
     glGenBuffers(1, &textureBuffer);
@@ -1275,7 +1274,7 @@ void Font::AddCharacter(FontChar fontChar)
     font.insert(position, fontChar);
 }
 
-FontChar Font::GetCharacter(std::string text, uint32_t offset, uint16_t &index) const
+FontChar Font::GetCharacter(std::string text, unsigned offset, uint16_t &index) const
 {
     uint16_t begin = 0, end = static_cast<uint16_t>(font.size());
     while (begin != end) {
@@ -1298,10 +1297,10 @@ FontChar Font::GetCharacter(std::string text, uint32_t offset, uint16_t &index) 
 void Font::RenderText(const std::string &text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType) const
 {
     GLfloat offsetLeft = 0.0f, offsetTop = 0.0f, renderWidth = 0.0f, renderHeight = 0.0f;
-    uint32_t primitives = 0;
+    unsigned primitives = 0;
     uint16_t lastCharIndex = 0xFFFF;
     std::vector<GLfloat> vertexData, textureData;
-    for (uint32_t i = 0; i < text.length(); i++) {
+    for (unsigned i = 0; i < text.length(); i++) {
         if (text[i] == '\n') {
             offsetLeft = 0.0f;
             offsetTop -= height;
@@ -1358,7 +1357,7 @@ void Font::RenderText(const std::string &text, GLfloat left, GLfloat top, GLfloa
             renderHeight = -offsetTop;
         }
 
-        i += static_cast<uint32_t>(fontChar.GetCode().length()) - 1;
+        i += static_cast<unsigned>(fontChar.GetCode().length()) - 1;
         lastCharIndex = charIndex;
         primitives += 2;
     }
@@ -1406,7 +1405,7 @@ struct Particle
 class Background
 {
     public:
-        Background(Texture &backgroundTexture, ShaderProgram &backgroundShader, Texture &particleTexture, ShaderProgram &particleShader, GLfloat screenRatio);
+        Background(const std::shared_ptr<Texture> &backgroundTexture, const std::shared_ptr<ShaderProgram> &backgroundShader, const std::shared_ptr<Texture> &particleTexture, const std::shared_ptr<ShaderProgram> &particleShader, GLfloat screenRatio);
         Background(const Background &) = delete;
         Background(Background &&) = delete;
         Background &operator=(const Background &) = delete;
@@ -1415,8 +1414,8 @@ class Background
         void Render() const;
         void Animate();
     private:
-        Texture *backgroundTexture, *particleTexture;
-        ShaderProgram *backgroundShader, *particleShader;
+        std::shared_ptr<Texture> backgroundTexture, particleTexture;
+        std::shared_ptr<ShaderProgram> backgroundShader, particleShader;
         GLuint vertexBuffer, textureBuffer, backgroundVertexAttribute, backgroundTextureAttribute, backgroundTextureUniform, particleVertexAttribute;
         GLuint particleTextureAttribute, particlePositionUniform, particleTextureUniform, particleOpacityUniform;
         std::vector<Particle> particles;
@@ -1425,22 +1424,22 @@ class Background
         void ResetParticle(Particle &particle, bool initial);
 };
 
-Background::Background(Texture &backgroundTexture, ShaderProgram &backgroundShader, Texture &particleTexture, ShaderProgram &particleShader, GLfloat screenRatio) :
-    backgroundTexture(&backgroundTexture), particleTexture(&particleTexture), backgroundShader(&backgroundShader), particleShader(&particleShader), screenRatio(screenRatio)
+Background::Background(const std::shared_ptr<Texture> &backgroundTexture, const std::shared_ptr<ShaderProgram> &backgroundShader, const std::shared_ptr<Texture> &particleTexture, const std::shared_ptr<ShaderProgram> &particleShader, GLfloat screenRatio)
+    : backgroundTexture(backgroundTexture), particleTexture(particleTexture), backgroundShader(backgroundShader), particleShader(particleShader), screenRatio(screenRatio)
 {
-    backgroundVertexAttribute = glGetAttribLocation(backgroundShader.GetProgram(), "vertexPosition");
-    backgroundTextureAttribute = glGetAttribLocation(backgroundShader.GetProgram(), "vertexTexture");
-    backgroundTextureUniform = glGetUniformLocation(backgroundShader.GetProgram(), "texture");
-    particleVertexAttribute = glGetAttribLocation(particleShader.GetProgram(), "vertexPosition");
-    particleTextureAttribute = glGetAttribLocation(particleShader.GetProgram(), "vertexTexture");
-    particlePositionUniform = glGetUniformLocation(particleShader.GetProgram(), "positionMatrix");
-    particleTextureUniform = glGetUniformLocation(particleShader.GetProgram(), "texture");
-    particleOpacityUniform = glGetUniformLocation(particleShader.GetProgram(), "opacity");
+    backgroundVertexAttribute = glGetAttribLocation(backgroundShader->GetProgram(), "vertexPosition");
+    backgroundTextureAttribute = glGetAttribLocation(backgroundShader->GetProgram(), "vertexTexture");
+    backgroundTextureUniform = glGetUniformLocation(backgroundShader->GetProgram(), "texture");
+    particleVertexAttribute = glGetAttribLocation(particleShader->GetProgram(), "vertexPosition");
+    particleTextureAttribute = glGetAttribLocation(particleShader->GetProgram(), "vertexTexture");
+    particlePositionUniform = glGetUniformLocation(particleShader->GetProgram(), "positionMatrix");
+    particleTextureUniform = glGetUniformLocation(particleShader->GetProgram(), "texture");
+    particleOpacityUniform = glGetUniformLocation(particleShader->GetProgram(), "opacity");
 
     glGenBuffers(1, &vertexBuffer);
     glGenBuffers(1, &textureBuffer);
 
-    for (uint32_t i = 0; i < NUMBER_OF_PARTICLES; i++) {
+    for (unsigned i = 0; i < NUMBER_OF_PARTICLES; i++) {
         Particle particle;
         ResetParticle(particle, true);
         particles.push_back(particle);
@@ -1508,7 +1507,7 @@ void Background::Render() const
     glEnableVertexAttribArray(particleVertexAttribute);
     glEnableVertexAttribArray(particleTextureAttribute);
 
-    for (uint32_t i = 0; i < particles.size(); i++) {
+    for (unsigned i = 0; i < particles.size(); i++) {
         glUniformMatrix4fv(particlePositionUniform, 1, GL_FALSE, (screen * particles[i].position * particles[i].scale).GetData().get());
 
         glUniform1f(particleOpacityUniform, particles[i].opacity * sin(particles[i].life * 3.14159265358979f));
@@ -1530,7 +1529,7 @@ void Background::Render() const
 
 void Background::Animate()
 {
-    for (uint32_t i = 0; i < particles.size(); i++) {
+    for (unsigned i = 0; i < particles.size(); i++) {
         particles[i].position = particles[i].position * particles[i].delta;
         particles[i].life += particles[i].lifeDelta;
         GLfloat *position = particles[i].position.GetData().get();
@@ -1585,19 +1584,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     try {
         Window *window = &Window::GetInstance();
 
-        uint32_t width, height;
+        unsigned width, height;
         window->GetClientSize(width, height);
         glViewport(0, 0, width, height);
         GLfloat screenRatio = width / static_cast<GLfloat>(height);
 
-        Texture fontTexture("images/euphemia.png");
-        ShaderProgram fontShader("shaders/particle.vs", "shaders/particle.fs", ShaderProgram::SourceType::LOAD_FROM_FILE);
+        std::shared_ptr<Texture> fontTexture(new Texture("images/euphemia.png"));
+        std::shared_ptr<ShaderProgram> fontShader(new ShaderProgram("shaders/particle.vs", "shaders/particle.fs", ShaderProgram::SourceType::LOAD_FROM_FILE));
         Font font("fonts/euphemia.fnt", fontTexture, fontShader);
 
-        Texture backgroundTexture("images/background.png");
-        ShaderProgram backgroundShader("shaders/background.vs", "shaders/background.fs", ShaderProgram::SourceType::LOAD_FROM_FILE);
-        Texture particleTexture("images/particle.png");
-        ShaderProgram particleShader("shaders/particle.vs", "shaders/particle.fs", ShaderProgram::SourceType::LOAD_FROM_FILE);
+        std::shared_ptr<Texture> backgroundTexture(new Texture("images/background.png"));
+        std::shared_ptr<ShaderProgram> backgroundShader(new ShaderProgram("shaders/background.vs", "shaders/background.fs", ShaderProgram::SourceType::LOAD_FROM_FILE));
+        std::shared_ptr<Texture> particleTexture(new Texture("images/particle.png"));
+        std::shared_ptr<ShaderProgram> particleShader(new ShaderProgram("shaders/particle.vs", "shaders/particle.fs", ShaderProgram::SourceType::LOAD_FROM_FILE));
         Background background(backgroundTexture, backgroundShader, particleTexture, particleShader, screenRatio);
 
         while (!quit) {
