@@ -5,7 +5,6 @@
 #include <thread>
 #include <chrono>
 #include <deque>
-#include <functional>
 #include "lodepng/lodepng.h"
 #ifndef _WIN32
 #include <iostream>
@@ -32,43 +31,6 @@ using std::min;
 #endif
 
 #define NUMBER_OF_PARTICLES 16
-
-class ScopeGuard {
-    public:
-        ScopeGuard() = default;
-        template <class T>
-        ScopeGuard(T &&func) {
-            this->operator+=<T>(std::forward<T>(func));
-        }
-        template <class T>
-        ScopeGuard &operator+=(T &&func) {
-            try {
-                handlers.emplace_front(std::forward<T>(func));
-                return *this;
-            }
-            catch (...) {
-                func();
-                throw;
-            }
-        }
-        virtual ~ScopeGuard();
-    private:
-        std::deque<std::function<void()>> handlers;
-};
-
-ScopeGuard::~ScopeGuard()
-{
-    if (!std::uncaught_exception()) {
-        return;
-    }
-    for (auto &func : handlers) {
-        try {
-            func();
-        } catch(...) {
-            /* std::terminate(); */
-        }
-    }
-}
 
 #ifdef _WIN32
 PFNGLACTIVETEXTUREPROC glActiveTexture;
@@ -121,7 +83,7 @@ class Window
         static Window &GetInstance();
         void Close();
         bool SwapBuffers();
-        void GetClientSize(uint32_t &width, uint32_t &height);
+        void GetClientSize(uint32_t &width, uint32_t &height) const;
         EventType GetEvent();
     private:
 #ifndef _WIN32
@@ -151,8 +113,8 @@ class Window
 
 #ifdef _WIN32
         template <class T>
-        T InitGLFunction(std::string glFuncName);
-        void InitGL();
+        T InitGLFunction(const std::string &glFuncName) const;
+        void InitGL() const;
         static LRESULT CALLBACK WindowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 #endif
 };
@@ -169,28 +131,25 @@ Window::Window()
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         throw std::runtime_error("Cannot create SDL window");
     }
-    ScopeGuard rollback([&](){
-        SDL_Quit();
-    });
 
     SDL_WM_SetCaption("SDL Window", "SDL Icon");
 
     SDL_Surface *sdlScreen = SDL_SetVideoMode(640, 480, 0, 0);
     if (sdlScreen == nullptr) {
+        SDL_Quit();
         throw std::runtime_error("Cannot create SDL window");
     }
 
     eglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (eglDisplay == EGL_NO_DISPLAY) {
+        SDL_Quit();
         throw std::runtime_error("Cannot obtain EGL display connection");
     }
 
     if (eglInitialize(eglDisplay, nullptr, nullptr) != EGL_TRUE) {
+        SDL_Quit();
         throw std::runtime_error("Cannot initialize EGL display connection");
     }
-    rollback += [&](){
-        eglTerminate(eglDisplay);
-    };
 
     static const EGLint attribList[] =
     {
@@ -206,10 +165,14 @@ Window::Window()
     EGLConfig config;
     EGLint numConfig;
     if (eglChooseConfig(eglDisplay, attribList, &config, 1, &numConfig) != EGL_TRUE) {
+        eglTerminate(eglDisplay);
+        SDL_Quit();
         throw std::runtime_error("Cannot obtain EGL frame buffer configuration");
     }
 
     if (eglBindAPI(EGL_OPENGL_ES_API) != EGL_TRUE) {
+        eglTerminate(eglDisplay);
+        SDL_Quit();
         throw std::runtime_error("Cannot set rendering API");
     }
 
@@ -221,13 +184,15 @@ Window::Window()
 
     eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttrib);
     if (eglContext == EGL_NO_CONTEXT) {
+        eglTerminate(eglDisplay);
+        SDL_Quit();
         throw std::runtime_error("Cannot create EGL rendering context");
     }
-    rollback += [&](){
-        eglDestroyContext(eglDisplay, eglContext);
-    };
 
     if (graphics_get_display_size(0, &clientWidth, &clientHeight) < 0) {
+        eglDestroyContext(eglDisplay, eglContext);
+        eglTerminate(eglDisplay);
+        SDL_Quit();
         throw std::runtime_error("Cannot obtain screen resolution");
     }
 
@@ -245,9 +210,6 @@ Window::Window()
 
     dispmanDisplay = vc_dispmanx_display_open(0);
     DISPMANX_UPDATE_HANDLE_T dispmanUpdate = vc_dispmanx_update_start(0);
-    rollback += [&](){
-        vc_dispmanx_display_close(dispmanDisplay);
-    };
 
 #ifdef TFT_OUTPUT
     uint32_t image;
@@ -257,34 +219,44 @@ Window::Window()
 
     fbFd = open("/dev/fb1", O_RDWR);
     if (fbFd < 0) {
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
+        eglTerminate(eglDisplay);
+        SDL_Quit();
         throw std::runtime_error("Cannot open secondary framebuffer");
     }
-    rollback += [&](){
-        close(fbFd);
-    };
     if (ioctl(fbFd, FBIOGET_FSCREENINFO, &fInfo) ||
-        ioctl(fbFd, FBIOGET_VSCREENINFO, &vInfo)) {
+        close(fbFd);
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
+        eglTerminate(eglDisplay);
+        SDL_Quit();
         throw std::runtime_error("Cannot access secondary framebuffer information");
     }
 
     dispmanResource = vc_dispmanx_resource_create(VC_IMAGE_RGB565, vInfo.xres, vInfo.yres, &image);
     if (!dispmanResource) {
+        close(fbFd);
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
+        eglTerminate(eglDisplay);
+        SDL_Quit();
         throw std::runtime_error("Cannot initialize secondary display");
     }
-    rollback += [&](){
-        vc_dispmanx_resource_delete(dispmanResource);
-    };
 
     fbMemSize = fInfo.smem_len;
     fbLineSize = vInfo.xres * vInfo.bits_per_pixel >> 3;
 
     framebuffer = reinterpret_cast<uint8_t *>(mmap(nullptr, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0));
     if (framebuffer == MAP_FAILED) {
+        vc_dispmanx_resource_delete(dispmanResource);
+        close(fbFd);
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
+        eglTerminate(eglDisplay);
+        SDL_Quit();
         throw std::runtime_error("Cannot initialize secondary framebuffer memory mapping");
     }
-    rollback += [&](){
-        munmap(framebuffer, fbMemSize);
-    };
 
     vc_dispmanx_rect_set(&dispmanRect, 0, 0, vInfo.xres, vInfo.yres);
 #endif
@@ -297,19 +269,23 @@ Window::Window()
     nativeWindow.width = clientWidth;
     nativeWindow.height = clientHeight;
     vc_dispmanx_update_submit_sync(dispmanUpdate);
-    rollback += [&](){
-        dispmanUpdate = vc_dispmanx_update_start(0);
-        vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
-        vc_dispmanx_update_submit_sync(dispmanUpdate);
-    };
 
     eglSurface = eglCreateWindowSurface(eglDisplay, config, &nativeWindow, nullptr);
     if (eglSurface == EGL_NO_SURFACE) {
+        dispmanUpdate = vc_dispmanx_update_start(0);
+        vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
+        vc_dispmanx_update_submit_sync(dispmanUpdate);
+#ifdef TFT_OUTPUT
+        munmap(framebuffer, fbMemSize);
+        vc_dispmanx_resource_delete(dispmanResource);
+        close(fbFd);
+#endif
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
+        eglTerminate(eglDisplay);
+        SDL_Quit();
         throw std::runtime_error("Cannot create new EGL window surface");
     }
-    rollback += [&](){
-        eglDestroySurface(eglDisplay, eglSurface);
-    };
 #else
 #ifndef FORCE_FULLSCREEN
     clientWidth = 640;
@@ -337,9 +313,6 @@ Window::Window()
     if (!RegisterClassEx(&wcex)) {
         throw std::runtime_error("Cannot create OpenGL window");
     }
-    ScopeGuard rollback([&](){
-        UnregisterClass("OpenGLWindow", hInstance);
-    });
 
     DWORD exStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;
     DWORD style = WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME & ~WS_MAXIMIZEBOX;
@@ -350,6 +323,7 @@ Window::Window()
     clientArea.bottom = clientHeight;
 
     if(!AdjustWindowRectEx(&clientArea, style, false, exStyle)) {
+        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot create OpenGL window");
     }
 
@@ -362,21 +336,18 @@ Window::Window()
 #endif
 
     if (hWnd == NULL) {
+        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot create OpenGL window");
     }
 
     ShowWindow(hWnd, SW_SHOW);
-    rollback += [&](){
-        DestroyWindow(hWnd);
-    };
 
     hDC = GetDC(hWnd);
     if (hDC == NULL) {
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot obtain device context handle");
     }
-    rollback += [&](){
-        ReleaseDC(hWnd, hDC);
-    };
 
     PIXELFORMATDESCRIPTOR pfd;
     std::memset(&pfd, 0, sizeof(pfd));
@@ -390,35 +361,55 @@ Window::Window()
 
     GLuint pixelFormat = ChoosePixelFormat(hDC, &pfd);
     if (!pixelFormat) {
+        ReleaseDC(hWnd, hDC);
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot obtain correct pixel format configuration");
     }
 
     if (!SetPixelFormat(hDC, pixelFormat, &pfd)) {
+        ReleaseDC(hWnd, hDC);
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot set correct pixel format configuration");
     }
 
     hRC = wglCreateContext(hDC);
     if (hRC == NULL) {
+        ReleaseDC(hWnd, hDC);
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot create OpenGL rendering context");
     }
-    rollback += [&](){
-        wglDeleteContext(hRC);
-    };
 #endif
 
 #ifndef _WIN32
     if (eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext) != EGL_TRUE) {
+        eglDestroySurface(eglDisplay, eglSurface);
+        dispmanUpdate = vc_dispmanx_update_start(0);
+        vc_dispmanx_element_remove(dispmanUpdate, dispmanElement);
+        vc_dispmanx_update_submit_sync(dispmanUpdate);
+#ifdef TFT_OUTPUT
+        munmap(framebuffer, fbMemSize);
+        vc_dispmanx_resource_delete(dispmanResource);
+        close(fbFd);
+#endif
+        vc_dispmanx_display_close(dispmanDisplay);
+        eglDestroyContext(eglDisplay, eglContext);
+        eglTerminate(eglDisplay);
+        SDL_Quit();
         throw std::runtime_error("Cannot attach EGL rendering context to EGL surface");
     }
 
     quit = false;
 #else
     if (!wglMakeCurrent(hDC, hRC)) {
+        wglDeleteContext(hRC);
+        ReleaseDC(hWnd, hDC);
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot attach OpenGL rendering context to thread");
     }
-    rollback += [&](){
-        wglMakeCurrent(NULL, NULL);
-    };
 
     GLint attribs[] = {
         WGL_CONTEXT_MAJOR_VERSION_ARB, 2,
@@ -431,6 +422,11 @@ Window::Window()
 
     HGLRC hRC2 = wglCreateContextAttribsARB(hDC, hRC, attribs);
     if (hRC2 == NULL) {
+        wglMakeCurrent(NULL, NULL);
+        wglDeleteContext(hRC);
+        ReleaseDC(hWnd, hDC);
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot create OpenGL rendering context");
     }
 
@@ -438,6 +434,11 @@ Window::Window()
     hRC = hRC2;
 
     if (!wglMakeCurrent(hDC, hRC)) {
+        wglMakeCurrent(NULL, NULL);
+        wglDeleteContext(hRC);
+        ReleaseDC(hWnd, hDC);
+        DestroyWindow(hWnd);
+        UnregisterClass("OpenGLWindow", hInstance);
         throw std::runtime_error("Cannot attach OpenGL rendering context to thread");
     }
 #endif
@@ -475,7 +476,8 @@ Window &Window::GetInstance()
     return instance;
 }
 
-void Window::Close() {
+void Window::Close()
+{
 #ifndef _WIN32
     quit = true;
 #else
@@ -526,7 +528,7 @@ Window::EventType Window::GetEvent()
 
 #ifdef _WIN32
 template <class T>
-T Window::InitGLFunction(std::string glFuncName)
+T Window::InitGLFunction(const std::string &glFuncName) const
 {
     T func = reinterpret_cast<T>(wglGetProcAddress(glFuncName.c_str()));
     if (func == nullptr) {
@@ -535,7 +537,7 @@ T Window::InitGLFunction(std::string glFuncName)
     return func;
 }
 
-void Window::InitGL()
+void Window::InitGL() const
 {
     glActiveTexture = InitGLFunction<PFNGLACTIVETEXTUREPROC>("glActiveTexture");
     glAttachShader = InitGLFunction<PFNGLATTACHSHADERPROC>("glAttachShader");
@@ -582,7 +584,7 @@ LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 }
 #endif
 
-void Window::GetClientSize(uint32_t &width, uint32_t &height)
+void Window::GetClientSize(uint32_t &width, uint32_t &height) const
 {
     width = clientWidth;
     height = clientHeight;
@@ -602,7 +604,7 @@ class ShaderProgram
         ShaderProgram &operator=(const ShaderProgram &) = delete;
         virtual ~ShaderProgram();
 
-        GLuint GetProgram();
+        GLuint GetProgram() const;
     private:
         GLuint vertexShader;
         GLuint fragmentShader;
@@ -663,7 +665,7 @@ ShaderProgram::~ShaderProgram()
     glDeleteShader(vertexShader);
 }
 
-GLuint ShaderProgram::GetProgram()
+GLuint ShaderProgram::GetProgram() const
 {
     return program;
 }
@@ -726,26 +728,26 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, SourceType srcType, GLen
 class Texture
 {
     public:
-        Texture(const char *textureSrc);
+        Texture(const std::string &filename);
         Texture(GLuint width, GLuint height, GLchar *data);
         Texture(const Texture &) = delete;
         Texture(Texture &&) = delete;
         Texture &operator=(const Texture &) = delete;
         virtual ~Texture();
 
-        GLuint GetTexture();
-        GLuint GetWidth();
-        GLuint GetHeight();
+        GLuint GetTexture() const;
+        GLuint GetWidth() const;
+        GLuint GetHeight() const;
     private:
         GLuint texture;
         GLuint width;
         GLuint height;
 };
 
-Texture::Texture(const char *textureSrc)
+Texture::Texture(const std::string &filename)
 {
     std::vector<uint8_t> image;
-    GLuint error = lodepng::decode(image, width, height, textureSrc);
+    GLuint error = lodepng::decode(image, width, height, filename);
     if (error) {
         throw std::runtime_error("Cannot load texture");
     }
@@ -771,15 +773,18 @@ Texture::~Texture()
     glDeleteTextures(1, &texture);
 }
 
-GLuint Texture::GetTexture() {
+GLuint Texture::GetTexture() const
+{
     return texture;
 }
 
-GLuint Texture::GetWidth() {
+GLuint Texture::GetWidth() const
+{
     return width;
 }
 
-GLuint Texture::GetHeight() {
+GLuint Texture::GetHeight() const
+{
     return height;
 }
 
@@ -800,7 +805,7 @@ class Matrix
 
         std::shared_ptr<GLfloat> &GetData();
 
-        void GetSize(GLuint &width, GLuint &height);
+        void GetSize(GLuint &width, GLuint &height) const;
         void SetSize(GLuint width, GLuint height);
 
         Matrix operator+(const Matrix &matrix);
@@ -1004,7 +1009,7 @@ Matrix &Matrix::operator=(const GLfloat *sourceData)
     return *this;
 }
 
-void Matrix::GetSize(GLuint &width, GLuint &height)
+void Matrix::GetSize(GLuint &width, GLuint &height) const
 {
     width = this->width;
     height = this->height;
@@ -1052,15 +1057,15 @@ struct TextureRect
 class FontChar
 {
     public:
-        FontChar(std::string code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size);
+        FontChar(const std::string &code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size);
 
-        std::string GetCode();
-        GLfloat GetWidth();
-        CharOffset GetOffset();
-        TextureRect GetRect();
-        CharSize GetSize();
+        std::string GetCode() const;
+        GLfloat GetWidth() const;
+        CharOffset GetOffset() const;
+        TextureRect GetRect() const;
+        CharSize GetSize() const;
         void AddAdvance(CharAdvance advance);
-        GLfloat GetAdvance(uint16_t character);
+        GLfloat GetAdvance(uint16_t character) const;
     private:
         std::string code;
         GLfloat width;
@@ -1070,37 +1075,37 @@ class FontChar
         std::vector<CharAdvance> advances;
 };
 
-FontChar::FontChar(std::string code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size) :
+FontChar::FontChar(const std::string &code, GLfloat width, CharOffset offset, TextureRect rect, CharSize size) :
     code(code), width(width), offset(offset), textureRect(rect), size(size)
 {
 }
 
-std::string FontChar::GetCode()
+std::string FontChar::GetCode() const
 {
     return code;
 }
 
-GLfloat FontChar::GetWidth()
+GLfloat FontChar::GetWidth() const
 {
     return width;
 }
 
-CharOffset FontChar::GetOffset()
+CharOffset FontChar::GetOffset() const
 {
     return offset;
 }
 
-TextureRect FontChar::GetRect()
+TextureRect FontChar::GetRect() const
 {
     return textureRect;
 }
 
-CharSize FontChar::GetSize()
+CharSize FontChar::GetSize() const
 {
     return size;
 }
 
-GLfloat FontChar::GetAdvance(uint16_t character)
+GLfloat FontChar::GetAdvance(uint16_t character) const
 {
     for (CharAdvance advance : advances) {
         if (advance.character == character) {
@@ -1110,7 +1115,8 @@ GLfloat FontChar::GetAdvance(uint16_t character)
     return 0;
 }
 
-void FontChar::AddAdvance(CharAdvance advance) {
+void FontChar::AddAdvance(CharAdvance advance)
+{
     advances.push_back(advance);
 }
 
@@ -1120,122 +1126,123 @@ void FontChar::AddAdvance(CharAdvance advance) {
 class Font
 {
     public:
-        Font(const char *fontSrc, Texture &texture, ShaderProgram &shader);
+        Font(const std::string &filename, Texture &texture, ShaderProgram &shader);
         Font(const Font &) = delete;
         Font(Font &&) = delete;
         Font &operator=(const Font &) = delete;
         virtual ~Font();
 
-        void RenderText(std::string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType);
+        void RenderText(const std::string &text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType) const;
     private:
+        void AddCharacter(FontChar fontChar);
+        FontChar GetCharacter(std::string text, uint32_t offset, uint16_t& index) const;
+
         std::string name;
         Texture *texture;
         ShaderProgram *shader;
         GLuint vertexBuffer, textureBuffer, positionAttribute, textureAttribute, positionUniform, textureUniform, opacityUniform;
         std::vector<FontChar> font;
-
-        void AddCharacter(FontChar fontChar);
-        FontChar GetCharacter(std::string text, uint32_t offset, uint16_t &index);
 };
 
-Font::Font(const char *fontSrc, Texture &texture, ShaderProgram &shader) :
+Font::Font(const std::string &filename, Texture &texture, ShaderProgram &shader) :
     texture(&texture), shader(&shader)
 {
     std::ifstream file;
     uint16_t buffer[256];
-    file.open(fontSrc, std::ifstream::binary);
+    file.open(filename, std::ifstream::binary);
     if (!file.is_open()) {
         throw std::runtime_error("Cannot open font file");
     }
-    ScopeGuard rollback([&](){
+    try {
+        file.read(reinterpret_cast<char*>(buffer), 4);
+        if ((file.rdstate() & std::ifstream::eofbit) || std::string(reinterpret_cast<char*>(buffer), 4) != "FONT") {
+            throw std::runtime_error("Cannot load font file, wrong file format");
+        }
+        file.read(reinterpret_cast<char*>(buffer), sizeof(uint8_t));
+        if (file.rdstate() & std::ifstream::eofbit) {
+            throw std::runtime_error("Cannot load font file, wrong file format");
+        }
+        uint8_t length = *(reinterpret_cast<uint8_t*>(buffer));
+        file.read(reinterpret_cast<char*>(buffer), length * sizeof(uint8_t));
+        if (file.rdstate() & std::ifstream::eofbit) {
+            throw std::runtime_error("Cannot load font file, wrong file format");
+        }
+        name = std::string(reinterpret_cast<char*>(buffer), length * sizeof(uint8_t));
+        file.read(reinterpret_cast<char*>(buffer), sizeof(uint8_t));
+        if (file.rdstate() & std::ifstream::eofbit) {
+            throw std::runtime_error("Cannot load font file, wrong file format");
+        }
+        uint8_t height = *(reinterpret_cast<uint8_t*>(buffer));
+        file.read(reinterpret_cast<char*>(buffer), sizeof(uint16_t));
+        if (file.rdstate() & std::ifstream::eofbit) {
+            throw std::runtime_error("Cannot load font file, wrong file format");
+        }
+        uint16_t chars = *buffer;
+        for (uint16_t i = 0; i < chars; i++) {
+            file.read(reinterpret_cast<char*>(buffer), sizeof(uint8_t));
+            if (file.rdstate() & std::ifstream::eofbit) {
+                throw std::runtime_error("Cannot load font file, wrong file format");
+            }
+            uint8_t size = *(reinterpret_cast<uint8_t*>(buffer));
+            file.read(reinterpret_cast<char*>(buffer), size * sizeof(uint8_t));
+            if (file.rdstate() & std::ifstream::eofbit) {
+                throw std::runtime_error("Cannot load font file, wrong file format");
+            }
+            std::string code = std::string(reinterpret_cast<char*>(buffer), size * sizeof(uint8_t));
+            file.read(reinterpret_cast<char*>(buffer), sizeof(uint8_t));
+            if (file.rdstate() & std::ifstream::eofbit) {
+                throw std::runtime_error("Cannot load font file, wrong file format");
+            }
+            GLfloat width = *(reinterpret_cast<uint8_t*>(buffer)) / static_cast<GLfloat>(height);
+            file.read(reinterpret_cast<char*>(buffer), 2 * sizeof(uint8_t));
+            if (file.rdstate() & std::ifstream::eofbit) {
+                throw std::runtime_error("Cannot load font file, wrong file format");
+            }
+            CharOffset offset = {
+                (reinterpret_cast<int8_t*>(buffer))[0] / static_cast<GLfloat>(height),
+                (reinterpret_cast<int8_t*>(buffer))[1] / static_cast<GLfloat>(height)
+            };
+            file.read(reinterpret_cast<char*>(buffer), 4 * sizeof(uint16_t));
+            if (file.rdstate() & std::ifstream::eofbit) {
+                throw std::runtime_error("Cannot load font file, wrong file format");
+            }
+            TextureRect textureRect = {
+                buffer[0] / static_cast<GLfloat>(texture.GetWidth()),
+                buffer[1] / static_cast<GLfloat>(texture.GetHeight()),
+                buffer[2] / static_cast<GLfloat>(texture.GetWidth()),
+                buffer[3] / static_cast<GLfloat>(texture.GetHeight())
+            };
+            CharSize dimensions = {
+                buffer[2] / static_cast<GLfloat>(height),
+                buffer[3] / static_cast<GLfloat>(height)
+            };
+            FontChar fontChar(code, width, offset, textureRect, dimensions);
+            file.read(reinterpret_cast<char*>(buffer), sizeof(uint16_t));
+            if (file.rdstate() & std::ifstream::eofbit) {
+                throw std::runtime_error("Cannot load font file, wrong file format");
+            }
+            uint16_t advances = *buffer;
+            for (uint16_t j = 0; j < advances; j++) {
+                file.read(reinterpret_cast<char*>(buffer), sizeof(uint16_t));
+                if (file.rdstate() & std::ifstream::eofbit) {
+                    throw std::runtime_error("Cannot load font file, wrong file format");
+                }
+                uint16_t character = *buffer;
+                file.read(reinterpret_cast<char*>(buffer), sizeof(uint8_t));
+                if (file.rdstate() & std::ifstream::eofbit) {
+                    throw std::runtime_error("Cannot load font file, wrong file format");
+                }
+                fontChar.AddAdvance({
+                    character,
+                    *(reinterpret_cast<int8_t*>(buffer)) / static_cast<GLfloat>(height)
+                    });
+            }
+            AddCharacter(fontChar);
+        }
         file.close();
-    });
-    file.read(reinterpret_cast<char *>(buffer), 4);
-    if ((file.rdstate() & std::ifstream::eofbit) || std::string(reinterpret_cast<char *>(buffer), 4) != "FONT") {
-        throw std::runtime_error("Cannot load font file, wrong file format");
+    } catch (...) {
+        file.close();
     }
-    file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
-    if (file.rdstate() & std::ifstream::eofbit) {
-        throw std::runtime_error("Cannot load font file, wrong file format");
-    }
-    uint8_t length = *(reinterpret_cast<uint8_t *>(buffer));
-    file.read(reinterpret_cast<char *>(buffer), length * sizeof(uint8_t));
-    if (file.rdstate() & std::ifstream::eofbit) {
-        throw std::runtime_error("Cannot load font file, wrong file format");
-    }
-    name = std::string(reinterpret_cast<char *>(buffer), length * sizeof(uint8_t));
-    file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
-    if (file.rdstate() & std::ifstream::eofbit) {
-        throw std::runtime_error("Cannot load font file, wrong file format");
-    }
-    uint8_t height = *(reinterpret_cast<uint8_t *>(buffer));
-    file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
-    if (file.rdstate() & std::ifstream::eofbit) {
-        throw std::runtime_error("Cannot load font file, wrong file format");
-    }
-    uint16_t chars = *buffer;
-    for (uint16_t i = 0; i < chars; i++) {
-        file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
-        if (file.rdstate() & std::ifstream::eofbit) {
-            throw std::runtime_error("Cannot load font file, wrong file format");
-        }
-        uint8_t size = *(reinterpret_cast<uint8_t *>(buffer));
-        file.read(reinterpret_cast<char *>(buffer), size * sizeof(uint8_t));
-        if (file.rdstate() & std::ifstream::eofbit) {
-            throw std::runtime_error("Cannot load font file, wrong file format");
-        }
-        std::string code = std::string(reinterpret_cast<char *>(buffer), size * sizeof(uint8_t));
-        file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
-        if (file.rdstate() & std::ifstream::eofbit) {
-            throw std::runtime_error("Cannot load font file, wrong file format");
-        }
-        GLfloat width = *(reinterpret_cast<uint8_t *>(buffer)) / static_cast<GLfloat>(height);
-        file.read(reinterpret_cast<char *>(buffer), 2 * sizeof(uint8_t));
-        if (file.rdstate() & std::ifstream::eofbit) {
-            throw std::runtime_error("Cannot load font file, wrong file format");
-        }
-        CharOffset offset = {
-            (reinterpret_cast<int8_t *>(buffer))[0] / static_cast<GLfloat>(height),
-            (reinterpret_cast<int8_t *>(buffer))[1] / static_cast<GLfloat>(height)
-        };
-        file.read(reinterpret_cast<char *>(buffer), 4 * sizeof(uint16_t));
-        if (file.rdstate() & std::ifstream::eofbit) {
-            throw std::runtime_error("Cannot load font file, wrong file format");
-        }
-        TextureRect textureRect = {
-            buffer[0] / static_cast<GLfloat>(texture.GetWidth()),
-            buffer[1] / static_cast<GLfloat>(texture.GetHeight()),
-            buffer[2] / static_cast<GLfloat>(texture.GetWidth()),
-            buffer[3] / static_cast<GLfloat>(texture.GetHeight())
-        };
-        CharSize dimensions = {
-            buffer[2] / static_cast<GLfloat>(height),
-            buffer[3] / static_cast<GLfloat>(height)
-        };
-        FontChar fontChar(code, width, offset, textureRect, dimensions);
-        file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
-        if (file.rdstate() & std::ifstream::eofbit) {
-            throw std::runtime_error("Cannot load font file, wrong file format");
-        }
-        uint16_t advances = *buffer;
-        for (uint16_t j = 0; j < advances; j++) {
-            file.read(reinterpret_cast<char *>(buffer), sizeof(uint16_t));
-            if (file.rdstate() & std::ifstream::eofbit) {
-                throw std::runtime_error("Cannot load font file, wrong file format");
-            }
-            uint16_t character = *buffer;
-            file.read(reinterpret_cast<char *>(buffer), sizeof(uint8_t));
-            if (file.rdstate() & std::ifstream::eofbit) {
-                throw std::runtime_error("Cannot load font file, wrong file format");
-            }
-            fontChar.AddAdvance({
-                character,
-                *(reinterpret_cast<int8_t *>(buffer)) / static_cast<GLfloat>(height)
-            });
-        }
-        AddCharacter(fontChar);
-    }
-    file.close();
 
     positionAttribute = glGetAttribLocation(shader.GetProgram(), "vertexPosition");
     textureAttribute = glGetAttribLocation(shader.GetProgram(), "vertexTexture");
@@ -1268,7 +1275,8 @@ void Font::AddCharacter(FontChar fontChar)
     font.insert(position, fontChar);
 }
 
-FontChar Font::GetCharacter(std::string text, uint32_t offset, uint16_t &index) {
+FontChar Font::GetCharacter(std::string text, uint32_t offset, uint16_t &index) const
+{
     uint16_t begin = 0, end = static_cast<uint16_t>(font.size());
     while (begin != end) {
         uint16_t check = (begin + end) >> 1;
@@ -1287,7 +1295,7 @@ FontChar Font::GetCharacter(std::string text, uint32_t offset, uint16_t &index) 
     return font[begin];
 }
 
-void Font::RenderText(std::string text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType)
+void Font::RenderText(const std::string &text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType) const
 {
     GLfloat offsetLeft = 0.0f, offsetTop = 0.0f, renderWidth = 0.0f, renderHeight = 0.0f;
     uint32_t primitives = 0;
@@ -1404,7 +1412,7 @@ class Background
         Background &operator=(const Background &) = delete;
         virtual ~Background();
 
-        void Render();
+        void Render() const;
         void Animate();
     private:
         Texture *backgroundTexture, *particleTexture;
@@ -1445,7 +1453,7 @@ Background::~Background()
     glDeleteBuffers(1, &textureBuffer);
 }
 
-void Background::Render()
+void Background::Render() const
 {
     Matrix screen = Matrix::GenerateScale(1.0f / screenRatio, 1.0f, 1.0f);
 
