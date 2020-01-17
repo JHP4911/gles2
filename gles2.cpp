@@ -1631,7 +1631,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
     } catch (std::exception &e) {
 #ifndef _WIN32
-       std::cout << e.what() << std::endl;
+        std::cout << e.what() << std::endl;
 #else
         MessageBox(NULL, e.what(), "Exception", MB_OK | MB_ICONERROR);
 #endif
