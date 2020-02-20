@@ -65,11 +65,11 @@ PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
 class Window
 {
     public:
-        enum class EventType {
-            NO_EVENT,
-            KEY_PRESSED_ESC,
-            WINDOW_CLOSED,
-            APPLICATION_TERMINATED
+        enum class Event {
+            NoEvent,
+            KeyPressedEsc,
+            WindowClosed,
+            ApplicationTerminated
         };
 
 #ifdef _WIN32
@@ -84,7 +84,7 @@ class Window
         void Close();
         bool SwapBuffers();
         void GetClientSize(unsigned &width, unsigned &height) const;
-        EventType GetEvent();
+        Event GetEvent();
     private:
 #ifndef _WIN32
         DISPMANX_DISPLAY_HANDLE_T dispmanDisplay;
@@ -103,7 +103,7 @@ class Window
 #else
         HWND hWnd;
         HINSTANCE hInstance;
-        EventType event;
+        Event event;
         HGLRC hRC;
         HDC hDC;
 #endif
@@ -497,31 +497,31 @@ bool Window::SwapBuffers()
 #endif
 }
 
-Window::EventType Window::GetEvent()
+Window::Event Window::GetEvent()
 {
 #ifndef _WIN32
     SDL_Event event;
     if (SDL_PollEvent(&event)) {
         if ((event.type == SDL_KEYDOWN) && (event.key.keysym.sym == SDLK_ESCAPE)) {
-            return EventType::KEY_PRESSED_ESC;
+            return Event::KeyPressedEsc;
         }
     } else if (quit) {
-        return EventType::APPLICATION_TERMINATED;
+        return Event::ApplicationTerminated;
 #else
     MSG msg;
     if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) > 0) {
         if (msg.message == WM_QUIT) {
             exitCode = static_cast<int32_t>(msg.wParam);
-            return EventType::APPLICATION_TERMINATED;
+            return Event::ApplicationTerminated;
         } else {
-            event = EventType::NO_EVENT;
+            event = Event::NoEvent;
             TranslateMessage(&msg);
             DispatchMessage(&msg);
             return event;
         }
 #endif
     }
-    return EventType::NO_EVENT;
+    return Event::NoEvent;
 }
 
 #ifdef _WIN32
@@ -569,10 +569,10 @@ void Window::InitGL() const
 LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     if (msg == WM_CLOSE) {
-        GetInstance().event = EventType::WINDOW_CLOSED;
+        GetInstance().event = Event::WindowClosed;
         return 0;
     } else if ((msg == WM_KEYDOWN) && (wParam == VK_ESCAPE)) {
-        GetInstance().event = EventType::KEY_PRESSED_ESC;
+        GetInstance().event = Event::KeyPressedEsc;
         return 0;
     } else if ((msg == WM_SETCURSOR) && (LOWORD(lParam) == HTCLIENT)) {
         SetCursor(NULL);
@@ -591,12 +591,12 @@ void Window::GetClientSize(uint32_t &width, uint32_t &height) const
 class ShaderProgram
 {
     public:
-        enum class SourceType {
-            LOAD_FROM_STRING,
-            LOAD_FROM_FILE
+        enum class Source {
+            String,
+            File
         };
 
-        ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, SourceType srcType);
+        ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, Source srcType);
         ShaderProgram(const ShaderProgram &) = delete;
         ShaderProgram(ShaderProgram &&) = delete;
         ShaderProgram &operator=(const ShaderProgram &) = delete;
@@ -608,10 +608,10 @@ class ShaderProgram
         GLuint fragmentShader;
         GLuint program;
 
-        GLuint LoadShader(const char *shaderSrc, SourceType srcType, GLenum shaderType);
+        GLuint LoadShader(const char *shaderSrc, Source srcType, GLenum shaderType);
 };
 
-ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, SourceType srcType)
+ShaderProgram::ShaderProgram(const char *vertexShaderSrc, const char *fragmentShaderSrc, Source srcType)
 {
     GLint isLinked;
 
@@ -668,7 +668,7 @@ GLuint ShaderProgram::GetProgram() const
     return program;
 }
 
-GLuint ShaderProgram::LoadShader(const char *shaderSrc, SourceType srcType, GLenum shaderType)
+GLuint ShaderProgram::LoadShader(const char *shaderSrc, Source srcType, GLenum shaderType)
 {
     GLuint shader;
     GLint isCompiled, length;
@@ -676,7 +676,7 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, SourceType srcType, GLen
 
     std::ifstream file;
     switch (srcType) {
-	case SourceType::LOAD_FROM_FILE:
+	case Source::File:
             file.open(shaderSrc, std::ifstream::binary);
             if (!file.is_open()) {
                 return 0;
@@ -688,12 +688,10 @@ GLuint ShaderProgram::LoadShader(const char *shaderSrc, SourceType srcType, GLen
             file.read(code, length);
             file.close();
             break;
-    case SourceType::LOAD_FROM_STRING:
+    case Source::String:
             code = const_cast<GLchar *>(shaderSrc);
             length = static_cast<GLint>(strlen(code));
             break;
-        default:
-            return 0;
     }
 
     shader = glCreateShader(shaderType);
@@ -789,10 +787,10 @@ GLuint Texture::GetHeight() const
 class Matrix
 {
     public:
-        enum class RotationType {
-            AXIS_X,
-            AXIS_Y,
-            AXIS_Z
+        enum class Rotation {
+            AxisX,
+            AxisY,
+            AxisZ
         };
 
         Matrix();
@@ -815,7 +813,7 @@ class Matrix
         static Matrix GeneratePerpective(GLfloat width, GLfloat height, GLfloat nearPane, GLfloat farPane);
         static Matrix GeneratePosition(GLfloat x, GLfloat y, GLfloat z);
         static Matrix GenerateScale(GLfloat x, GLfloat y, GLfloat z);
-        static Matrix GenerateRotation(GLfloat angle, RotationType type);
+        static Matrix GenerateRotation(GLfloat angle, Rotation type);
     private:
         std::shared_ptr<GLfloat> data;
         GLuint width;
@@ -907,7 +905,7 @@ Matrix Matrix::GenerateScale(GLfloat x, GLfloat y, GLfloat z)
     return result;
 }
 
-Matrix Matrix::GenerateRotation(GLfloat angle, RotationType type)
+Matrix Matrix::GenerateRotation(GLfloat angle, Rotation type)
 {
     Matrix result(4, 4);
     GLfloat *data = result.GetData().get();
@@ -917,21 +915,21 @@ Matrix Matrix::GenerateRotation(GLfloat angle, RotationType type)
     GLfloat cosAngle = static_cast<GLfloat>(cos(angle));
 
     switch (type) {
-        case RotationType::AXIS_X:
+        case Rotation::AxisX:
             data[0] = 1.0f;
             data[5] = cosAngle;
             data[6] = sinAngle;
             data[9] = -sinAngle;
             data[10] = cosAngle;
             break;
-        case RotationType::AXIS_Y:
+        case Rotation::AxisY:
             data[0] = cosAngle;
             data[2] = sinAngle;
             data[5] = 1.0f;
             data[8] = -sinAngle;
             data[10] = cosAngle;
             break;
-        case RotationType::AXIS_Z:
+        case Rotation::AxisZ:
         default:
             data[0] = cosAngle;
             data[1] = sinAngle;
@@ -1238,7 +1236,7 @@ Font::Font(const std::string &filename, const std::shared_ptr<Texture> &texture,
             AddCharacter(fontChar);
         }
         file.close();
-    } catch (std::exception &) {
+    } catch (...) {
         file.close();
         throw std::runtime_error("Cannot load font file, wrong file format");
     }
@@ -1582,26 +1580,26 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #endif
 
     try {
-        Window *window = &Window::GetInstance();
+        Window &window = Window::GetInstance();
 
         unsigned width, height;
-        window->GetClientSize(width, height);
+        window.GetClientSize(width, height);
         glViewport(0, 0, width, height);
         GLfloat screenRatio = width / static_cast<GLfloat>(height);
 
         std::shared_ptr<Texture> fontTexture(new Texture("images/euphemia.png"));
-        std::shared_ptr<ShaderProgram> fontShader(new ShaderProgram("shaders/particle.vs", "shaders/particle.fs", ShaderProgram::SourceType::LOAD_FROM_FILE));
+        std::shared_ptr<ShaderProgram> fontShader(new ShaderProgram("shaders/particle.vs", "shaders/particle.fs", ShaderProgram::Source::File));
         Font font("fonts/euphemia.fnt", fontTexture, fontShader);
 
         std::shared_ptr<Texture> backgroundTexture(new Texture("images/background.png"));
-        std::shared_ptr<ShaderProgram> backgroundShader(new ShaderProgram("shaders/background.vs", "shaders/background.fs", ShaderProgram::SourceType::LOAD_FROM_FILE));
+        std::shared_ptr<ShaderProgram> backgroundShader(new ShaderProgram("shaders/background.vs", "shaders/background.fs", ShaderProgram::Source::File));
         std::shared_ptr<Texture> particleTexture(new Texture("images/particle.png"));
-        std::shared_ptr<ShaderProgram> particleShader(new ShaderProgram("shaders/particle.vs", "shaders/particle.fs", ShaderProgram::SourceType::LOAD_FROM_FILE));
+        std::shared_ptr<ShaderProgram> particleShader(new ShaderProgram("shaders/particle.vs", "shaders/particle.fs", ShaderProgram::Source::File));
         Background background(backgroundTexture, backgroundShader, particleTexture, particleShader, screenRatio);
 
         while (!quit) {
-            switch (window->GetEvent()) {
-                case Window::EventType::NO_EVENT:
+            switch (window.GetEvent()) {
+                case Window::Event::NoEvent:
                     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
                     glClear(GL_COLOR_BUFFER_BIT);
                     background.Render();
@@ -1616,15 +1614,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                         screenRatio,
                         GL_FONT_TEXT_VERTICAL_CENTER | GL_FONT_TEXT_HORIZONTAL_CENTER
                     );
-                    window->SwapBuffers();
+                    window.SwapBuffers();
                     background.Animate();
                     std::this_thread::sleep_for(std::chrono::microseconds(10000));
                     break;
-                case Window::EventType::KEY_PRESSED_ESC:
-                case Window::EventType::WINDOW_CLOSED:
-                    window->Close();
+                case Window::Event::KeyPressedEsc:
+                case Window::Event::WindowClosed:
+                    window.Close();
                     break;
-                case Window::EventType::APPLICATION_TERMINATED:
+                case Window::Event::ApplicationTerminated:
                     quit = true;
                     break;
             }
