@@ -212,6 +212,8 @@ Window::Window()
     DISPMANX_UPDATE_HANDLE_T dispmanUpdate = vc_dispmanx_update_start(0);
 
 #ifdef TFT_OUTPUT
+    uint32_t image;
+
     struct fb_var_screeninfo vInfo;
     struct fb_fix_screeninfo fInfo;
 
@@ -223,7 +225,7 @@ Window::Window()
         SDL_Quit();
         throw std::runtime_error("Cannot open secondary framebuffer");
     }
-    if (ioctl(fbFd, FBIOGET_FSCREENINFO, &fInfo) ||
+    if (ioctl(fbFd, FBIOGET_FSCREENINFO, &fInfo) || ioctl(fbFd, FBIOGET_VSCREENINFO, &vInfo)) {
         close(fbFd);
         vc_dispmanx_display_close(dispmanDisplay);
         eglDestroyContext(eglDisplay, eglContext);
@@ -245,7 +247,7 @@ Window::Window()
     fbMemSize = fInfo.smem_len;
     fbLineSize = vInfo.xres * vInfo.bits_per_pixel >> 3;
 
-    framebuffer = reinterpret_cast<uint8_t *>(mmap(nullptr, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0));
+    framebuffer = reinterpret_cast<unsigned char *>(mmap(nullptr, fbMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd, 0));
     if (framebuffer == MAP_FAILED) {
         vc_dispmanx_resource_delete(dispmanResource);
         close(fbFd);
@@ -582,7 +584,7 @@ LRESULT CALLBACK Window::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 }
 #endif
 
-void Window::GetClientSize(uint32_t &width, uint32_t &height) const
+void Window::GetClientSize(unsigned &width, unsigned &height) const
 {
     width = clientWidth;
     height = clientHeight;
@@ -744,7 +746,7 @@ class Texture
 
 Texture::Texture(const std::string &filename)
 {
-    std::vector<uint8_t> image;
+    std::vector<unsigned char> image;
     GLuint error = lodepng::decode(image, width, height, filename);
     if (error) {
         throw std::runtime_error("Cannot load texture");
@@ -1133,7 +1135,7 @@ class Font
         void RenderText(const std::string &text, GLfloat left, GLfloat top, GLfloat height, GLfloat screenRatio, GLuint hookType) const;
     private:
         void AddCharacter(FontChar fontChar);
-        FontChar GetCharacter(std::string text, uint32_t offset, uint16_t& index) const;
+        FontChar GetCharacter(std::string text, unsigned offset, uint16_t& index) const;
 
         std::string name;
         std::shared_ptr<Texture> texture;
